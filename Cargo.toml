@@ -1,0 +1,7 @@
+[package]
+name = "zapoctak"
+version = "0.1.0"
+authors = ["Vasek Sraier <git@vakabus.cz>"]
+
+[dependencies]
+multiaddr = '*'
