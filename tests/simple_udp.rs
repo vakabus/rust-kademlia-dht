@@ -14,7 +14,7 @@ use multiaddr::Multiaddr;
 fn test_dht_start_and_stop() {
     // initialize DHT
     let hasher = sha1::SHA1Hasher::new();
-    let mut service = DHTService::new(hasher);
+    let mut service = DHTService::new(hasher, 20, 3, Duration::from_secs(15*60));
     let udp_gateway = UdpGateway::new("127.0.0.1:12345");
     let seed = Multiaddr::new("/ip4/127.0.0.1/udp/12346").unwrap();
 

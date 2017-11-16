@@ -1,5 +1,6 @@
-use gateway::{MsgGateway, BinMsg, SendAbilityChecker};
+use gateway::{MsgGateway, SendAbilityChecker};
 use multiaddr::Multiaddr;
+use msg::Msg;
 
 pub struct MergerGateway {
     validators: Vec<Box<SendAbilityChecker>>,
@@ -28,9 +29,9 @@ impl MergerGateway {
 }
 
 impl MsgGateway for MergerGateway {
-    fn send(&mut self, data: BinMsg) -> bool {
+    fn send(&mut self, data: Msg) -> bool {
         for (i, val) in self.validators.iter().enumerate() {
-            if val.can_send(data.get_addr()) {
+            if val.can_send(&data.addr) {
                 self.gateways[i].send(data);
                 return true;
             }
@@ -39,7 +40,7 @@ impl MsgGateway for MergerGateway {
         false
     }
 
-    fn recv(&mut self) -> Option<BinMsg> {
+    fn recv(&mut self) -> Option<Msg> {
         self.current_gw = (self.current_gw + 1) % self.gateways.len();
         self.gateways[self.current_gw].recv()
     }

@@ -7,3 +7,6 @@ authors = ["Vasek Sraier <git@vakabus.cz>"]
 multiaddr = '*'
 rust-crypto = '^0.2'
 rand = '*'
+serde = '*'
+serde_derive = '*'
+bincode = '*'

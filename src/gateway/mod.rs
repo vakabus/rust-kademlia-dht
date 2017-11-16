@@ -2,13 +2,13 @@
 //!  concept of message gateways. Each gateway specifies to what kind of network addresses it can send data.
 //! When communicating, the main DHT management than chooses, which gateway is most appropriate for communicating
 //!  with other peer.
-//!  
-//! In the most basic form, each gateway runs in its own thread. This way, if you want to support network 
+//!
+//! In the most basic form, each gateway runs in its own thread. This way, if you want to support network
 //! interfaces, which are slow and/or in any other way problematic, they won't interfere with the rest of
 //! the system. However, if you don't want to use so many threads, you can merge your gateways using special
 //! MergerGateway. All the "subgateways" contained in it will run in the same thread and they will take turns
 //! in receiving data.
-//! 
+//!
 //! Gateways also take care of data serialization. It means, that for every possible network channel, the most
 //!  appropriate format can be chosen. For example, communication with JS clients over WebSocket is best handled
 //! through JSON, but communication through UDP is better in some binary format. This also makes it possible to create
@@ -19,10 +19,13 @@ pub use gateway::udp::UdpGateway;
 mod merger;
 pub use gateway::merger::MergerGateway;
 
+
+pub mod serialize;
+
 use multiaddr::Multiaddr;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
-use msg::{BinMsg,Msg};
+use msg::Msg;
 
 pub enum ControlMsg {
     Stop,
@@ -33,14 +36,11 @@ pub enum ControlMsg {
 
 pub trait MsgGateway {
     /// does not block, returns Some(Msg) when received
-    fn recv(&mut self) -> Option<BinMsg>;
+    fn recv(&mut self) -> Option<Msg>;
     /// Sends msg to the recipient, returns True if succeeded
-    fn send(&mut self, msg: BinMsg) -> bool;
+    fn send(&mut self, msg: Msg) -> bool;
     /// Returns address of the gateway, must be known before calling first recv()
     fn get_address(&self) -> Multiaddr;
-
-    fn serialize(&self, msg: Msg) -> BinMsg;
-    fn parse(&self, binmsg: BinMsg) -> Msg;
 
     fn get_send_ability_checker(&self) -> Box<SendAbilityChecker + Send>;
 
@@ -49,7 +49,6 @@ pub trait MsgGateway {
             // handle receiving
             let m = self.recv();
             if let Some(msg) = m {
-                let msg = self.parse(msg);
                 msg_channel.send(msg);
             }
 
@@ -58,7 +57,6 @@ pub trait MsgGateway {
                 match msg {
                     ControlMsg::Stop => break,
                     ControlMsg::SendMsg(m) => {
-                        let m = self.serialize(m);
                         let _ = self.send(m);
                     }
                 }

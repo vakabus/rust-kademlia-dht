@@ -1,8 +1,9 @@
 use gateway::{MsgGateway, SendAbilityChecker, ProtocolBasedSendAbilityChecker};
-use msg::{BinMsg, Msg};
+use msg::Msg;
 use multiaddr::Multiaddr;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
+use gateway::serialize::binary::{serialize, parse, BinMsg};
 
 pub struct UdpGateway {
     socket: UdpSocket,
@@ -16,6 +17,19 @@ impl UdpGateway {
 
         Box::from(gw)
     }
+
+    fn _recv(&mut self) -> Option<BinMsg> {
+        //TODO fix the huge buffer
+        let mut buff = [0u8; 65536];
+        match self.socket.recv_from(&mut buff) {
+            Ok((len, addr)) => {
+                let maddr = convert_address(addr);
+                let msg = BinMsg::new(Vec::from(&buff[..len]), maddr);
+                Some(msg)
+            }
+            Err(_) => None,
+        }
+    }
 }
 
 impl MsgGateway for UdpGateway {
@@ -23,27 +37,20 @@ impl MsgGateway for UdpGateway {
         Box::from(ProtocolBasedSendAbilityChecker::new(self.get_address()))
     }
 
-    fn recv(&mut self) -> Option<BinMsg> {
-        let mut buff = [0u8; 65536];
-        match self.socket.recv_from(&mut buff) {
-            Ok((len, addr)) => {
-                let maddr = convert_address(addr);
-                Some(BinMsg::new(Vec::from(&buff[..len]), maddr))
+    fn recv(&mut self) -> Option<Msg> {
+        let msg = self._recv();
+        match msg {
+            Some(msg) => {
+                match parse(msg) {
+                    Ok(msg) => Some(msg),
+                    Err(_) => None,
+                }
             }
-            Err(_) => None,
+            None => None,
         }
-
     }
 
-    fn send(&mut self, msg: BinMsg) -> bool {
-        unimplemented!();
-    }
-
-    fn serialize(&self, msg: Msg) -> BinMsg {
-        unimplemented!();
-    }
-
-    fn parse(&self, binmsg: BinMsg) -> Msg {
+    fn send(&mut self, msg: Msg) -> bool {
         unimplemented!();
     }
 
@@ -68,10 +75,9 @@ mod tests {
     use std::thread;
     use std::net::UdpSocket;
     use gateway::udp::UdpGateway;
-    use gateway::MsgGateway;
 
     #[test]
-    fn test_udp_recv() {
+    fn test_udp_recv_internal() {
         let socket = UdpSocket::bind("127.0.0.9:12345").unwrap();
         let mut gw = UdpGateway::new("127.0.0.2:12345");
 
@@ -81,7 +87,7 @@ mod tests {
                 .expect("Failed to send data...");
         });
 
-        let msg = gw.recv().unwrap();
+        let msg = gw._recv().unwrap();
         assert_eq!(msg.get_addr().to_string(), "/ip4/127.0.0.9/udp/12345");
         assert_eq!(
             msg.get_payload(),
