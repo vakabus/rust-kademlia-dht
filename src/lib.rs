@@ -5,6 +5,8 @@ extern crate crypto;
 extern crate serde_derive;
 extern crate serde;
 extern crate bincode;
+#[macro_use]
+extern crate log;
 
 pub mod hash;
 pub mod gateway;
@@ -13,6 +15,7 @@ mod msg;
 mod routing;
 mod peer;
 mod dht_control;
+mod id;
 
 
 use dht_control::*;
@@ -25,7 +28,6 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
 use multiaddr::Multiaddr;
 use gateway::ControlMsg;
-use peer::PeerID;
 use std::time::Duration;
 
 pub struct DHTService<T: DHTHasher> {
@@ -46,6 +48,7 @@ impl<T: DHTHasher> DHTService<T> {
         concurrency_degree: usize,
         peer_timeout: Duration,
     ) -> DHTService<T> {
+        info!("Initiating DHTService, hash_size={}", T::get_hash_bytes_count());
         DHTService {
             hasher: hasher,
             gateways: Vec::new(),
@@ -100,13 +103,16 @@ impl<T: DHTHasher> DHTService<T> {
                                                   Receiver<ControlMsg>) = mpsc::channel();
             let validator = gw.get_send_ability_checker();
 
-            let handle = thread::spawn(move || { gw.run(ch_send, control_receive); });
+            
+
+            let handle = thread::Builder::new().name("gateway".to_string())
+                .spawn(move || { gw.run(ch_send, control_receive); });
             self.node_operation_data
                 .as_mut()
                 .expect(
-                    "Unexpected non-existance of DHT data. This should never happen.",
+                    "Unexpected non-existence of DHT data. This should never happen. Failed to register new running gateway.",
                 )
-                .add_running_gateway(control_send, handle, validator);
+                .add_running_gateway(control_send, handle.expect("Failed to spawn gateway thread."), validator);
         }
 
         // start main management and processing thread
@@ -117,9 +123,9 @@ impl<T: DHTHasher> DHTService<T> {
             "Node operation data are not supplied.",
         );
         self.node_operation_data = None;
-        let handle = thread::spawn(move || {
+        let handle = thread::Builder::new().name("management".to_string()).spawn(move || {
             dht_control::run(gw_receive, control_channel_recv, node)
-        });
+        }).expect("Failed to spawn management thread;");
         self.control_thread = Some((control_channel_send, handle));
     }
 
@@ -141,13 +147,15 @@ impl<T: DHTHasher> DHTService<T> {
         let data = handle.join();
         if let Ok(nod) = data {
             self.node_operation_data = Some(nod);
+        } else {
+            panic!("Failed to join the DHT management thread.");
         }
 
         // stop and discard all connections to gateway threads
         for gw in self.node_operation_data
             .as_mut()
             .expect(
-                "Unexpected non-existance of DHT data. This should never happen.",
+                "Unexpected non-existence of DHT data. This should never happen. Management thread must have not returned its data.",
             )
             .drain_running_gateways()
         {

@@ -4,15 +4,16 @@ use std::thread::JoinHandle;
 use std::time::{Instant, Duration};
 use multiaddr::Multiaddr;
 
+use id::*;
 use msg::*;
 use peer::*;
 use routing::*;
 use gateway::*;
 
 pub struct DHTManagement {
-    peer_id: PeerID,
+    peer_id: UID,
     config: DHTConfig,
-    data_store: HashMap<Vec<u8>, Vec<u8>>,
+    data_store: HashMap<UID, Vec<u8>>,
     routing_table: RoutingTable,
     running_gateways: Vec<RunningGateway>,
 }
@@ -32,22 +33,27 @@ pub struct RunningGateway {
 }
 
 struct PendingOperations {
-    packets: HashMap<MsgID, (PendingOperationExec, Instant)>,
-    peer_lookups: HashMap<PeerID, PendingNodeLookup>,
+    packets: HashMap<UID, (PendingOperationExec, Instant)>,
+    peer_lookups: HashMap<UID, PendingLookup>,
 }
 
 enum PendingOperationExec {
     Pong{exec: fn(&mut DHTManagement, omsg: Option<Msg>, old: Peer, new: Peer), old: Peer, new: Peer},
-    PeerLookup{exec: fn(&mut DHTManagement, pending: &mut PendingOperations, msg: Option<Msg>, target: PeerID), target: PeerID},
+    Lookup{exec: fn(&mut DHTManagement, pending: &mut PendingOperations, msg: Option<Msg>, target: UID), target: UID},
 }
 
 impl PendingOperationExec {
     fn exec(self, mgmt: &mut DHTManagement, pending: &mut PendingOperations, omsg: Option<Msg>) {
         match self {
             PendingOperationExec::Pong{exec, old, new} => exec(mgmt, omsg, old, new),
-            PendingOperationExec::PeerLookup{exec, target} => exec(mgmt, pending, omsg, target),
+            PendingOperationExec::Lookup{exec, target} => exec(mgmt, pending, omsg, target),
         }
     }
+}
+
+enum ResultExec {
+    Peer {exec: fn(&mut DHTManagement, UID, Vec<Peer>)},
+    Value {exec: fn(&mut DHTManagement, UID, Option<Vec<u8>>)}
 }
 
 impl PendingOperations {
@@ -59,15 +65,15 @@ impl PendingOperations {
     }
 }
 
-struct PendingNodeLookup {
+struct PendingLookup {
     peers: Vec<(Peer, bool)>,
-    result: fn(&mut DHTManagement, PeerID, Vec<Peer>),
+    result: ResultExec,
 }
 
 pub enum DHTControlMsg {
     Stop,
-    Save { key: Vec<u8>, value: Vec<u8> },
-    Query {key: Vec<u8>},
+    Save { key: UID, value: Vec<u8> },
+    Query {key: UID},
 }
 
 impl DHTManagement {
@@ -78,7 +84,7 @@ impl DHTManagement {
         peer_timeout: Duration,
         msg_timeout: Duration,
     ) -> DHTManagement {
-        let my_peer_id = PeerID::random(hash_size);
+        let my_peer_id = UID::random(hash_size);
         DHTManagement {
             config: DHTConfig{
                 hash_size: hash_size,
@@ -114,36 +120,36 @@ impl DHTManagement {
         self._send_msg(msg);
     }
 
-    fn msg_pong(&self, msg_id: MsgID, dst: &Multiaddr) {
+    fn msg_pong(&self, msg_id: UID, dst: &Multiaddr) {
         self._send_msg(Msg::new_pong(&self.peer_id, msg_id, dst));
     }
 
-    fn msg_find_node(&mut self, pending: &mut PendingOperations, id: &PeerID, peer: &Peer, f: PendingOperationExec) {
+    fn msg_find_node(&mut self, pending: &mut PendingOperations, id: &UID, peer: &Peer, f: PendingOperationExec) {
         let msg = Msg::new_find_node(&self.peer_id, &peer.addr, &id);
         pending.packets.insert(msg.msg_id.clone(), (f, Instant::now()));
         self._send_msg(msg);
     }
 
-    fn msg_find_value(&mut self, pending: &mut PendingOperations, dst: &Multiaddr, key: &Vec<u8>, f: PendingOperationExec) {
+    fn msg_find_value(&mut self, pending: &mut PendingOperations, dst: &Multiaddr, key: &UID, f: PendingOperationExec) {
         let msg = Msg::new_find_value(&self.peer_id, dst, key);
         pending.packets.insert(msg.msg_id.clone(), (f, Instant::now()));
         self._send_msg(msg);
     }
 
-    fn msg_value_found(&self, msg_id: MsgID, dst: &Multiaddr, key: &Vec<u8>) {
+    fn msg_value_found(&self, msg_id: UID, dst: &Multiaddr, key: &UID) {
         let value: &Vec<u8> = self.data_store.get(key).unwrap();
-        self._send_msg(Msg::new_value_found(&self.peer_id, msg_id,&dst,key,value,));
+        self._send_msg(Msg::new_value_found(&self.peer_id, msg_id,&dst,key.clone(),value,));
     }
 
-    fn msg_list_peers(&self, msg_id: MsgID, dst: &Multiaddr, peer_id: &PeerID) {
+    fn msg_list_peers(&self, msg_id: UID, dst: &Multiaddr, peer_id: &UID) {
         let peers = self.routing_table.get_k_nearest_peers(&peer_id, self.config.bucket_size);
         let peers = peers.into_iter().map(|x| MsgPeer::from(x)).collect();
         self._send_msg(Msg::new_list_peers(&self.peer_id, msg_id, dst, peers));
     }
 
-    fn msg_store(&self, dst: &Multiaddr, key: &Vec<u8>) {
+    fn msg_store(&self, dst: &Multiaddr, key: &UID) {
         let value: &Vec<u8> = self.data_store.get(key).unwrap();
-        let msg = Msg::new_store(&self.peer_id, dst, key, value);
+        let msg = Msg::new_store(&self.peer_id, dst, key.clone(), value);
         self._send_msg(msg);
     }
 
@@ -164,7 +170,7 @@ impl DHTManagement {
         self.running_gateways.drain(..)
     }
 
-    fn routing_table_insert(&mut self, pending: &mut PendingOperations, peer_id: PeerID, addr :Multiaddr) {
+    fn routing_table_insert(&mut self, pending: &mut PendingOperations, peer_id: UID, addr :Multiaddr) {
         let res = self.routing_table.update_or_insert_peer(peer_id, addr);
         if let Err((new, old)) = res {
             let old = old.clone();
@@ -182,24 +188,46 @@ impl DHTManagement {
         };
     }
 
-    fn locale_k_closest_nodes(&mut self, pending: &mut PendingOperations, peer_id: PeerID, f: fn(&mut DHTManagement, PeerID, Vec<Peer>) -> ()) {
+    fn locale_k_closest_nodes(&mut self, pending: &mut PendingOperations, peer_id: UID, f: fn(&mut DHTManagement, UID, Vec<Peer>) -> ()) {
         // get alpha nearest known nodes
         let peers = self.routing_table.get_k_nearest_peers(&peer_id, self.config.concurrency_degree);
 
+        if peers.len() == 0 {
+            f(self, peer_id, vec![]);
+            return;
+        }
+
         // save work data for future use
-        let data = PendingNodeLookup{
+        let data = PendingLookup{
             peers: peers.clone().into_iter().map(|x| (x, true)).collect(),
-            result: f,
+            result: ResultExec::Peer{exec: f},
         };
         pending.peer_lookups.insert(peer_id.clone(), data);
 
         // send alpha lookup requests
         for peer in peers {
-            self.msg_find_node(pending, &peer_id, &peer, PendingOperationExec::PeerLookup{exec: DHTManagement::handle_incoming_peer_lookup, target: peer_id.clone()});
+            self.msg_find_node(pending, &peer_id, &peer, PendingOperationExec::Lookup{exec: DHTManagement::handle_incoming_lookup, target: peer_id.clone()});
         }
     }
 
-    fn handle_incoming_peer_lookup(&mut self, pending: &mut PendingOperations, msg: Option<Msg>, target: PeerID) {
+    fn find_value_for_key(&mut self, pending: &mut PendingOperations, key: UID, f: fn(&mut DHTManagement, UID, Option<Vec<u8>>)) {
+        // get alpha nearest known nodes
+        let peers = self.routing_table.get_k_nearest_peers(&key, self.config.concurrency_degree);
+
+        // save work data for future use
+        let data = PendingLookup{
+            peers: peers.clone().into_iter().map(|x| (x, true)).collect(),
+            result: ResultExec::Value{exec: f},
+        };
+        pending.peer_lookups.insert(key.clone(), data);
+
+        // send alpha lookup requests
+        for peer in peers {
+            self.msg_find_value(pending, &peer.addr, &key, PendingOperationExec::Lookup{exec: DHTManagement::handle_incoming_lookup, target: key.clone()});
+        }
+    }
+
+    fn handle_incoming_lookup(&mut self, pending: &mut PendingOperations, msg: Option<Msg>, target: UID) {
         // get lookup data, terminate if there are none
         let data = pending.peer_lookups.remove(&target);
         if data.is_none() {return;};
@@ -207,19 +235,36 @@ impl DHTManagement {
 
         // check new msg
         if let Some(msg) = msg {
-            if let MsgType::RES_LIST_PEERS{ peers } = msg.msg_type {
-                // merge
-                data.peers.append(&mut peers.into_iter()
-                                    .map(|x| x.to_peer())
-                                    .filter(|x| x.is_some())
-                                    .map(|x| (x.unwrap(), false))
-                                    .collect());
-                // sort (nearest peers end up first)
-                data.peers.sort_unstable_by(|a, b| {
-                    a.0.peer_id.distance(&target).cmp(
-                        &(b.0.peer_id.distance(&target)),
-                    )
-                });
+            match msg.msg_type {
+                MsgType::RES_LIST_PEERS{ peers } => {
+                    // merge
+                    data.peers.append(&mut peers.into_iter()
+                                        .map(|x| x.to_peer())
+                                        .filter(|x| x.is_some())
+                                        .map(|x| (x.unwrap(), false))
+                                        .collect());
+                    // sort (nearest peers end up first)
+                    data.peers.sort_unstable_by(|a, b| {
+                        a.0.peer_id.distance(&target).cmp(
+                            &(b.0.peer_id.distance(&target)),
+                        )
+                    });
+                },
+                MsgType::RES_VALUE_FOUND{key, value} => {
+                    // check, if we are looking for value or peers
+                    if let ResultExec::Value{exec} = data.result {
+                        // deliver result
+                        if (key == target) {
+                            exec(self, key, Some(value));
+                            return;
+                        } else {
+                            eprintln!("Unexpected key value pair. Requested a different one");
+                        }
+                    } else {
+                        eprintln!("Unexpected message. Value arrived when requesting peers only.");
+                    }
+                },
+                _ => {eprintln!("Unexpected message.");}
             }
         }
 
@@ -240,12 +285,20 @@ impl DHTManagement {
 
             // deliver result
             let bucket_size = self.config.bucket_size;
-            (data.result)(self, target, data.peers.into_iter()
-                    .enumerate()
-                    .filter(|x| x.0 < bucket_size)
-                    .map(|x| (x.1).0)
-                    .collect()
-                );
+            match data.result {
+                ResultExec::Peer{ exec } => {
+                    exec(self, target, data.peers.into_iter()
+                                        .enumerate()
+                                        .filter(|x| x.0 < bucket_size)
+                                        .map(|x| (x.1).0)
+                                        .collect()
+                        );
+                },
+                ResultExec::Value {exec} => {
+                    exec(self, target, None);
+                }
+            }
+            
             // nothing to do, terminate (the other requests will terminate too, because they
             // no longer have access to neccessary data)
             return;
@@ -260,10 +313,11 @@ impl DHTManagement {
             }
         }).collect();
         //send lookup request
-        self.msg_find_node(pending, &target, &peer, PendingOperationExec::PeerLookup{exec: DHTManagement::handle_incoming_peer_lookup, target: target.clone()});
+        self.msg_find_node(pending, &target, &peer, PendingOperationExec::Lookup{exec: DHTManagement::handle_incoming_lookup, target: target.clone()});
         //save data for future use
         pending.peer_lookups.insert(target, data);
     }
+    
 
     fn handle_incoming_network_messages(&mut self, pending: &mut PendingOperations, incoming_msg: &Receiver<Msg>) {
         // handle received
@@ -286,7 +340,7 @@ impl DHTManagement {
                         self.msg_value_found(msg.msg_id, &msg.addr, &key);
                     } else {
                         // send closest known peers
-                        self.msg_list_peers(msg.msg_id, &msg.addr, &PeerID::from(key));
+                        self.msg_list_peers(msg.msg_id, &msg.addr, &UID::from(key));
                     }
                     self.routing_table_insert(pending, msg.peer_id, msg.addr);
                 },
@@ -305,7 +359,7 @@ impl DHTManagement {
         }
 
         // handle waiting packets
-        let to_remove: Vec<MsgID> = pending.packets.iter().filter(|x| ((x.1).1).elapsed() > self.config.msg_timeout).map(|x| (x.0).clone()).collect();
+        let to_remove: Vec<UID> = pending.packets.iter().filter(|x| ((x.1).1).elapsed() > self.config.msg_timeout).map(|x| (x.0).clone()).collect();
         for id in to_remove {
             let (run, _) = pending.packets.remove(&id).unwrap();
             run.exec(self, pending, None);
@@ -337,12 +391,22 @@ pub fn run(
                         // distribute the data further into the network
                         node.locale_k_closest_nodes(
                             &mut pending,
-                            PeerID::from(key.clone()),
+                            key,
                             result_store,
                         );
                     },
                     DHTControlMsg::Query {key} => {
-                        // TODO find value
+                        // check if we already have it
+                        if node.data_store.contains_key(&key) {
+                            let value = node.data_store.get(&key).unwrap().clone();
+                            result_query(&mut node, key, Some(value));
+                        } else {
+                            node.find_value_for_key(
+                                &mut pending,
+                                key,
+                                result_query
+                            )
+                        }
                     }
                 }
             }
@@ -374,10 +438,14 @@ pub fn run(
     }
 }
 
-fn result_nop(_: &mut DHTManagement,_: PeerID, _:Vec<Peer>) {}
+fn result_nop(_: &mut DHTManagement,_: UID, _:Vec<Peer>) {}
 
-fn result_store(mgmt: &mut DHTManagement, peer_id: PeerID ,peers:Vec<Peer>) {
+fn result_store(mgmt: &mut DHTManagement, peer_id: UID ,peers:Vec<Peer>) {
     for peer in peers {
-        mgmt.msg_store(&peer.addr, peer_id.bytes());
+        mgmt.msg_store(&peer.addr, &peer_id);
     }
+}
+
+fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>) {
+    unimplemented!();
 }

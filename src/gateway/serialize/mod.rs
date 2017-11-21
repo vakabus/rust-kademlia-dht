@@ -5,8 +5,9 @@ use serde_derive;
 pub mod binary;
 
 use multiaddr::{ToMultiaddr, Multiaddr};
-use peer::{Peer, PeerID};
-use msg::{Msg, MsgType, MsgID};
+use peer::Peer;
+use id::UID;
+use msg::{Msg, MsgType};
 
 #[derive(Serialize, Deserialize)]
 pub struct SerializableMsg {
@@ -28,8 +29,8 @@ impl From<Msg> for SerializableMsg {
 impl SerializableMsg {
     pub fn to_msg(self, addr: Multiaddr) -> Result<Msg, Error> {
         let msg = Msg {
-            msg_id: MsgID::from(self.msg_id),
-            peer_id: PeerID::from(self.peer_id),
+            msg_id: UID::from(self.msg_id),
+            peer_id: UID::from(self.peer_id),
             msg_type: self.msg_type,
             addr: addr,
         };

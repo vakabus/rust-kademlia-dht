@@ -1,5 +1,6 @@
 extern crate kademlia_dht;
 extern crate multiaddr;
+extern crate env_logger;
 
 use kademlia_dht::DHTService;
 use kademlia_dht::hash::sha1;
@@ -12,6 +13,9 @@ use multiaddr::Multiaddr;
 
 #[test]
 fn test_dht_start_and_stop() {
+    // init logger
+    env_logger::init().unwrap();
+
     // initialize DHT
     let hasher = sha1::SHA1Hasher::new();
     let mut service = DHTService::new(hasher, 20, 3, Duration::from_secs(15*60));

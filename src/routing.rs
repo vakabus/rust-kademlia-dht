@@ -1,12 +1,13 @@
 
-use peer::{PeerID, Peer};
+use peer::Peer;
 use multiaddr::Multiaddr;
 use std::time::Duration;
 use std::slice::Iter;
+use id::UID;
 
 pub struct RoutingTable {
     peer_timeout: Duration,
-    my_peer_id: PeerID,
+    my_peer_id: UID,
 
     buckets: Vec<KBucket>,
 }
@@ -45,7 +46,7 @@ impl KBucket {
         return r;
     }
 
-    pub fn get(&self, peer_id: &PeerID) -> Option<&Peer> {
+    pub fn get(&self, peer_id: &UID) -> Option<&Peer> {
         for p in self.peers.iter() {
             if p.peer_id == *peer_id {
                 return Some(&p);
@@ -58,7 +59,7 @@ impl KBucket {
         self.peers.iter()
     }
 
-    pub fn remove(&mut self, peer_id: &PeerID) -> Option<Peer> {
+    pub fn remove(&mut self, peer_id: &UID) -> Option<Peer> {
         let mut indx = None;
         for (i,v) in self.peers.iter().enumerate() {
             if v.peer_id == *peer_id {
@@ -84,7 +85,7 @@ impl KBucket {
 impl RoutingTable {
     /// Creates new routing table with key_size+1 buckets (buckets 0 to key_size).
     /// All buckets are initialized empty
-    pub fn new(my_peer_id: PeerID, bucket_size: usize, peer_timeout: Duration) -> RoutingTable {
+    pub fn new(my_peer_id: UID, bucket_size: usize, peer_timeout: Duration) -> RoutingTable {
         let mut buckets = Vec::with_capacity(my_peer_id.len());
         for i in 0..my_peer_id.len() {
             buckets.push(KBucket::new(bucket_size));
@@ -115,15 +116,15 @@ impl RoutingTable {
             .insert(peer)
     }
 
-    pub fn get_peer(&self, id: &PeerID) -> Option<&Peer> {
+    pub fn get_peer(&self, id: &UID) -> Option<&Peer> {
         self.get_bucket(id.distance(&self.my_peer_id).bucket_number()).get(id)
     }
 
-    pub fn remove_peer(&mut self, id: &PeerID) -> Option<Peer> {
+    pub fn remove_peer(&mut self, id: &UID) -> Option<Peer> {
         self.get_bucket_mut(id.bucket_number()).remove(id)
     }
 
-    pub fn update_peer(&mut self, id: &PeerID) -> bool {
+    pub fn update_peer(&mut self, id: &UID) -> bool {
         let p = self.remove_peer(id);
         if let Some(mut peer) = p {
             peer.update_last_seen_timestamp();
@@ -134,7 +135,7 @@ impl RoutingTable {
         }
     }
 
-    pub fn get_k_nearest_peers(&self, peer_id: &PeerID, k: usize) -> Vec<Peer> {
+    pub fn get_k_nearest_peers(&self, peer_id: &UID, k: usize) -> Vec<Peer> {
         let mut result: Vec<Peer> = Vec::new();
         let bn = peer_id.distance(&self.my_peer_id).bucket_number() as isize;
         let mut out_of_range = 0;
@@ -161,10 +162,10 @@ impl RoutingTable {
             )
         });
 
-        (result[..k]).to_vec()
+        result.into_iter().enumerate().filter(|x| x.0 < k).map(|(_,x)| x).collect()
     }
 
-    pub fn update_or_insert_peer(&mut self, peer_id: PeerID, addr: Multiaddr) -> Result<(),(Peer, Peer)> {
+    pub fn update_or_insert_peer(&mut self, peer_id: UID, addr: Multiaddr) -> Result<(),(Peer, Peer)> {
         let peer = self.remove_peer(&peer_id);
         if let Some(mut peer) = peer {
             peer.update_last_seen_timestamp();
