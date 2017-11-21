@@ -21,11 +21,15 @@ impl MsgID {
         rng.fill_bytes(&mut msg_id);
         MsgID::from(msg_id)
     }
+
+    pub fn bytes(&self) -> &Vec<u8> {
+        &self.id
+    }
 }
 
 #[derive(Debug)]
 pub struct Msg {
-    pub id: MsgID,
+    pub msg_id: MsgID,
     pub peer_id: PeerID,
     pub addr: Multiaddr,
     pub msg_type: MsgType,
@@ -34,7 +38,7 @@ pub struct Msg {
 impl Msg {
     pub fn new_ping(mid: &PeerID, dst: &Peer) -> Msg {
         Msg {
-            id: MsgID::random(mid.len()),
+            msg_id: MsgID::random(mid.len()),
             peer_id: mid.clone(),
             addr: dst.addr.clone(),
             msg_type: MsgType::REQ_PING,
@@ -42,7 +46,7 @@ impl Msg {
     }
     pub fn new_pong(mid: &PeerID, msg_id: MsgID, dst: &Multiaddr) -> Msg {
         Msg {
-            id: MsgID::random(mid.len()),
+            msg_id: MsgID::random(mid.len()),
             addr: dst.clone(),
             peer_id: mid.clone(),
             msg_type: MsgType::RES_PONG,
@@ -51,7 +55,7 @@ impl Msg {
 
     pub fn new_find_node(mid: &PeerID, dst: &Multiaddr, find_peer: &PeerID) -> Msg {
         Msg {
-            id: MsgID::random(mid.len()),
+            msg_id: MsgID::random(mid.len()),
             addr: dst.clone(),
             peer_id: mid.clone(),
             msg_type: MsgType::REQ_FIND_NODE { peer_id: find_peer.clone() },
@@ -61,7 +65,7 @@ impl Msg {
     pub fn new_value_found(mid: &PeerID,
         msg_id: MsgID ,dst: &Multiaddr,key: &Vec<u8>,value: &Vec<u8>) -> Msg {
         Msg {
-            id: msg_id,
+            msg_id: msg_id,
             peer_id: mid.clone(),
             addr: dst.clone(),
             msg_type: MsgType::RES_VALUE_FOUND {
@@ -74,7 +78,7 @@ impl Msg {
     pub fn new_list_peers(mid: &PeerID, msg_id: MsgID,dst: &Multiaddr,peers: Vec<MsgPeer>,) -> Msg {
         Msg {
             peer_id: mid.clone(),
-            id: msg_id,
+            msg_id: msg_id,
             addr: dst.clone(),
             msg_type: MsgType::RES_LIST_PEERS { peers },
         }
@@ -83,7 +87,7 @@ impl Msg {
     pub fn new_find_value(mid: &PeerID, dst: &Multiaddr, find_value: &Vec<u8>) -> Msg {
         Msg {
             peer_id: mid.clone(),
-            id: MsgID::random(mid.len()),
+            msg_id: MsgID::random(mid.len()),
             addr: dst.clone(),
             msg_type: MsgType::REQ_FIND_VALUE { key: find_value.clone() },
         }
@@ -92,7 +96,7 @@ impl Msg {
     pub fn new_store(mid: &PeerID, dst: &Multiaddr, key: &Vec<u8>, value: &Vec<u8>) -> Msg {
         Msg {
             peer_id: mid.clone(),
-            id: MsgID::random(mid.len()),
+            msg_id: MsgID::random(mid.len()),
             addr: dst.clone(),
             msg_type: MsgType::REQ_STORE {
                 key: key.clone(),
@@ -123,7 +127,7 @@ impl From<Peer> for MsgPeer {
     fn from(peer: Peer) -> MsgPeer {
         MsgPeer {
             addr: peer.addr.to_string(),
-            peer_id: peer.peer_id.get_peer_id_bytes(),
+            peer_id: peer.peer_id.owned_bytes(),
         }
     }
 }
@@ -132,7 +136,7 @@ impl MsgPeer {
     pub fn new(peer: &Peer) -> MsgPeer {
         MsgPeer {
             addr: peer.addr.to_string(),
-            peer_id: peer.peer_id.get_peer_id_bytes(),
+            peer_id: peer.peer_id.bytes().clone(),
         }
     }
 

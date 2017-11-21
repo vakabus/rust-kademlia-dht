@@ -54,6 +54,7 @@ impl<T: DHTHasher> DHTService<T> {
                 bucket_size,
                 concurrency_degree,
                 peer_timeout,
+                Duration::from_secs(30),    //TODO hardcoded constant
             )),
             control_thread: None,
         }

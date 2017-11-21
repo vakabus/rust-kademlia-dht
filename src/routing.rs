@@ -1,6 +1,5 @@
 
 use peer::{PeerID, Peer};
-use std::collections::BTreeMap;
 use multiaddr::Multiaddr;
 use std::time::Duration;
 use std::slice::Iter;
@@ -47,7 +46,7 @@ impl KBucket {
     }
 
     pub fn get(&self, peer_id: &PeerID) -> Option<&Peer> {
-        for p in self.peers {
+        for p in self.peers.iter() {
             if p.peer_id == *peer_id {
                 return Some(&p);
             }
@@ -60,16 +59,25 @@ impl KBucket {
     }
 
     pub fn remove(&mut self, peer_id: &PeerID) -> Option<Peer> {
+        let mut indx = None;
         for (i,v) in self.peers.iter().enumerate() {
             if v.peer_id == *peer_id {
-                return Some(self.peers.remove(i));
+                indx = Some(i);
             }
         }
-        None
+        if let Some(i) = indx {
+            Some(self.peers.remove(i))
+        } else {
+            None
+        }
     }
 
     pub fn is_full(&self) -> bool {
         self.peers.len() == self.max_size
+    }
+
+    pub fn len(&self) -> usize {
+        self.peers.len()
     }
 }
 
@@ -102,7 +110,8 @@ impl RoutingTable {
     }
 
     pub fn insert_peer(&mut self, peer: Peer) -> Result<(),(Peer, Peer)>{
-        self.get_bucket_mut((&peer).peer_id.distance(&self.my_peer_id).bucket_number())
+        let mid = self.my_peer_id.clone();
+        self.get_bucket_mut((&peer).peer_id.distance(&mid).bucket_number())
             .insert(peer)
     }
 
@@ -116,7 +125,7 @@ impl RoutingTable {
 
     pub fn update_peer(&mut self, id: &PeerID) -> bool {
         let p = self.remove_peer(id);
-        if let Some(peer) = p {
+        if let Some(mut peer) = p {
             peer.update_last_seen_timestamp();
             self.insert_peer(peer).unwrap();
             true
@@ -168,7 +177,7 @@ impl RoutingTable {
 
     pub fn get_old_peers(&mut self) -> Vec<Peer> {
         let mut old = Vec::new();
-        for bucket in self.buckets {
+        for bucket in self.buckets.iter() {
             for peer in bucket.iter() {
                 if peer.is_older_than(&self.peer_timeout) {
                     old.push(self.get_peer(&peer.peer_id).unwrap().clone());
@@ -179,7 +188,7 @@ impl RoutingTable {
         old
     }
 
-    pub fn list_not_full_buckets(&self) -> Vec<usize> {
+    fn list_not_full_buckets(&self) -> Vec<usize> {
         let mut result = Vec::new();
         for (i, bucket) in (&self.buckets).iter().enumerate() {
             if ! bucket.is_full() {
@@ -188,5 +197,13 @@ impl RoutingTable {
         }
 
         result
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.list_not_full_buckets().len() > 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.buckets.iter().map(|b| b.len()).sum()
     }
 }

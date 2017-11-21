@@ -62,18 +62,15 @@ impl PeerID {
         self.peer_id.len() * 8
     }
 
-    pub fn get_peer_id_bytes(&self) -> Vec<u8> {
-        self.peer_id.clone()
-    }
-
     pub fn distance(&self, other: &PeerID) -> PeerID {
         assert_eq!(self.peer_id.len(), other.peer_id.len());
 
-        PeerID::from((&self.peer_id)
+        let res: Vec<u8> = (&self.peer_id)
             .iter()
             .zip((&other.peer_id).iter())
             .map(|(x, y)| x ^ y)
-            .collect())
+            .collect();
+        PeerID::from(res)
     }
 
     pub fn len(&self) -> usize {
@@ -87,6 +84,14 @@ impl PeerID {
         let c = pos % 8;
     
         self.peer_id[b] & (1 << c) > 0
+    }
+
+    pub fn bytes(&self) -> &Vec<u8> {
+        &self.peer_id
+    }
+
+    pub fn owned_bytes(self) -> Vec<u8> {
+        self.peer_id
     }
 }
 
