@@ -43,6 +43,7 @@ pub fn parse(binmsg: BinMsg) -> Result<Msg, Error> {
     };
 
     // TO BE CONSIDERED
-    // maybe we should check if sender in content is the one who it was received from (blocks relaying and spoofing)
+    // maybe we should check if sender in content is the one who it was received from
+    // (blocks relaying and spoofing)
     Ok(result)
 }

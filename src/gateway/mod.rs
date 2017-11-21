@@ -1,18 +1,19 @@
-//! The DHT is designed to be able to work with network interface of any kind. To handle that, it introduces
-//!  concept of message gateways. Each gateway specifies to what kind of network addresses it can send data.
-//! When communicating, the main DHT management than chooses, which gateway is most appropriate for communicating
-//!  with other peer.
+//! The DHT is designed to be able to work with network interface of any kind. To handle that, it
+//! introduces concept of message gateways. Each gateway specifies to what kind of network
+//! addresses it can send data. When communicating, the main DHT management than chooses, which
+//! gateway is most appropriate for communicating with other peer.
 //!
-//! In the most basic form, each gateway runs in its own thread. This way, if you want to support network
-//! interfaces, which are slow and/or in any other way problematic, they won't interfere with the rest of
-//! the system. However, if you don't want to use so many threads, you can merge your gateways using special
-//! MergerGateway. All the "subgateways" contained in it will run in the same thread and they will take turns
-//! in receiving data.
+//! In the most basic form, each gateway runs in its own thread. This way, if you want to support
+//! network interfaces, which are slow and/or in any other way problematic, they won't interfere
+//! with the rest of the system. However, if you don't want to use so many threads, you can merge
+//! your gateways using special MergerGateway. All the "subgateways" contained in it will run in
+//! the same thread and they will take turns in receiving data.
 //!
-//! Gateways also take care of data serialization. It means, that for every possible network channel, the most
-//!  appropriate format can be chosen. For example, communication with JS clients over WebSocket is best handled
-//! through JSON, but communication through UDP is better in some binary format. This also makes it possible to create
-//! gateways, which could be used to communicate with existing networks. For example with BitTorrent DHT.
+//! Gateways also take care of data serialization. It means, that for every possible network
+//! channel, the most appropriate format can be chosen. For example, communication with JS clients
+//! over WebSocket is best handled through JSON, but communication through UDP is better in some
+//! binary format. This also makes it possible to create gateways, which could be used to
+//! communicate with existing networks. For example with BitTorrent DHT.
 
 mod udp;
 pub use gateway::udp::UdpGateway;

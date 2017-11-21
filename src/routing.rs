@@ -28,7 +28,7 @@ impl KBucket {
     }
 
     /// returns tuple (new, old) if failed
-    pub fn insert(&mut self, peer: Peer) -> Result<(),(Peer,Peer)> {
+    pub fn insert(&mut self, peer: Peer) -> Result<(), (Peer, Peer)> {
         if self.is_full() {
             Err((peer, self.peers.first().unwrap().clone()))
         } else {
@@ -61,7 +61,7 @@ impl KBucket {
 
     pub fn remove(&mut self, peer_id: &UID) -> Option<Peer> {
         let mut indx = None;
-        for (i,v) in self.peers.iter().enumerate() {
+        for (i, v) in self.peers.iter().enumerate() {
             if v.peer_id == *peer_id {
                 indx = Some(i);
             }
@@ -110,14 +110,15 @@ impl RoutingTable {
         )
     }
 
-    pub fn insert_peer(&mut self, peer: Peer) -> Result<(),(Peer, Peer)>{
+    pub fn insert_peer(&mut self, peer: Peer) -> Result<(), (Peer, Peer)> {
         let mid = self.my_peer_id.clone();
         self.get_bucket_mut((&peer).peer_id.distance(&mid).bucket_number())
             .insert(peer)
     }
 
     pub fn get_peer(&self, id: &UID) -> Option<&Peer> {
-        self.get_bucket(id.distance(&self.my_peer_id).bucket_number()).get(id)
+        self.get_bucket(id.distance(&self.my_peer_id).bucket_number())
+            .get(id)
     }
 
     pub fn remove_peer(&mut self, id: &UID) -> Option<Peer> {
@@ -150,7 +151,8 @@ impl RoutingTable {
                 out_of_range += 1;
             }
 
-            // break when we have enough peers from both sides of the buckets or if we run out of buckets
+            // break when we have enough peers from both sides of the buckets
+            // or if we run out of buckets
             if (out_of_range > 1) || (result.len() > k && i % 2 == 0) {
                 break;
             }
@@ -162,10 +164,19 @@ impl RoutingTable {
             )
         });
 
-        result.into_iter().enumerate().filter(|x| x.0 < k).map(|(_,x)| x).collect()
+        result
+            .into_iter()
+            .enumerate()
+            .filter(|x| x.0 < k)
+            .map(|(_, x)| x)
+            .collect()
     }
 
-    pub fn update_or_insert_peer(&mut self, peer_id: UID, addr: Multiaddr) -> Result<(),(Peer, Peer)> {
+    pub fn update_or_insert_peer(
+        &mut self,
+        peer_id: UID,
+        addr: Multiaddr,
+    ) -> Result<(), (Peer, Peer)> {
         let peer = self.remove_peer(&peer_id);
         if let Some(mut peer) = peer {
             peer.update_last_seen_timestamp();
@@ -192,7 +203,7 @@ impl RoutingTable {
     fn list_not_full_buckets(&self) -> Vec<usize> {
         let mut result = Vec::new();
         for (i, bucket) in (&self.buckets).iter().enumerate() {
-            if ! bucket.is_full() {
+            if !bucket.is_full() {
                 result.push(i);
             }
         }

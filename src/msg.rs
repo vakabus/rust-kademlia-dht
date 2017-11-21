@@ -39,8 +39,13 @@ impl Msg {
         }
     }
 
-    pub fn new_value_found(mid: &UID,
-        msg_id: UID ,dst: &Multiaddr,key: UID,value: &Vec<u8>) -> Msg {
+    pub fn new_value_found(
+        mid: &UID,
+        msg_id: UID,
+        dst: &Multiaddr,
+        key: UID,
+        value: &Vec<u8>,
+    ) -> Msg {
         Msg {
             msg_id: msg_id,
             peer_id: mid.clone(),
@@ -52,7 +57,7 @@ impl Msg {
         }
     }
 
-    pub fn new_list_peers(mid: &UID, msg_id: UID,dst: &Multiaddr,peers: Vec<MsgPeer>,) -> Msg {
+    pub fn new_list_peers(mid: &UID, msg_id: UID, dst: &Multiaddr, peers: Vec<MsgPeer>) -> Msg {
         Msg {
             peer_id: mid.clone(),
             msg_id: msg_id,

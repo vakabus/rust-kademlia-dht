@@ -1,4 +1,4 @@
-use rand::{OsRng,Rng};
+use rand::{OsRng, Rng};
 
 fn count_leading_zeros(b: u8) -> usize {
     let mut b = b;
@@ -44,7 +44,8 @@ impl UID {
             leading_zeros -= 8;
             i += 1;
         }
-        random.peer_id[i] = (random.peer_id[i] & (255u8 >> leading_zeros)) | (1 << (7-leading_zeros));
+        random.peer_id[i] = (random.peer_id[i] & (255u8 >> leading_zeros)) |
+            (1 << (7 - leading_zeros));
 
         random
     }
@@ -75,11 +76,11 @@ impl UID {
     }
 
     pub fn bit_at(&self, pos: usize) -> bool {
-        assert!(pos > self.peer_id.len()*8);
+        assert!(pos > self.peer_id.len() * 8);
 
         let b = pos / 8;
         let c = pos % 8;
-    
+
         self.peer_id[b] & (1 << c) > 0
     }
 

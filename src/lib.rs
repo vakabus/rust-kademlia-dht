@@ -48,7 +48,10 @@ impl<T: DHTHasher> DHTService<T> {
         concurrency_degree: usize,
         peer_timeout: Duration,
     ) -> DHTService<T> {
-        info!("Initiating DHTService, hash_size={}", T::get_hash_bytes_count());
+        info!(
+            "Initiating DHTService, hash_size={}",
+            T::get_hash_bytes_count()
+        );
         DHTService {
             hasher: hasher,
             gateways: Vec::new(),
@@ -57,7 +60,7 @@ impl<T: DHTHasher> DHTService<T> {
                 bucket_size,
                 concurrency_degree,
                 peer_timeout,
-                Duration::from_secs(30),    //TODO hardcoded constant
+                Duration::from_secs(30), //TODO hardcoded constant
             )),
             control_thread: None,
         }
@@ -103,16 +106,18 @@ impl<T: DHTHasher> DHTService<T> {
                                                   Receiver<ControlMsg>) = mpsc::channel();
             let validator = gw.get_send_ability_checker();
 
-            
 
-            let handle = thread::Builder::new().name("gateway".to_string())
-                .spawn(move || { gw.run(ch_send, control_receive); });
+
+            let handle = thread::Builder::new().name("gateway".to_string()).spawn(
+                move || { gw.run(ch_send, control_receive); },
+            );
+            let handle = handle.expect("Failed to spawn gateway thread.");
             self.node_operation_data
                 .as_mut()
                 .expect(
-                    "Unexpected non-existence of DHT data. This should never happen. Failed to register new running gateway.",
+                    "DHT data missing. This should never happen. Can't add new gateway.",
                 )
-                .add_running_gateway(control_send, handle.expect("Failed to spawn gateway thread."), validator);
+                .add_running_gateway(control_send, handle, validator);
         }
 
         // start main management and processing thread
@@ -123,9 +128,12 @@ impl<T: DHTHasher> DHTService<T> {
             "Node operation data are not supplied.",
         );
         self.node_operation_data = None;
-        let handle = thread::Builder::new().name("management".to_string()).spawn(move || {
-            dht_control::run(gw_receive, control_channel_recv, node)
-        }).expect("Failed to spawn management thread;");
+        let handle = thread::Builder::new()
+            .name("management".to_string())
+            .spawn(move || {
+                dht_control::run(gw_receive, control_channel_recv, node)
+            })
+            .expect("Failed to spawn management thread;");
         self.control_thread = Some((control_channel_send, handle));
     }
 
@@ -155,7 +163,8 @@ impl<T: DHTHasher> DHTService<T> {
         for gw in self.node_operation_data
             .as_mut()
             .expect(
-                "Unexpected non-existence of DHT data. This should never happen. Management thread must have not returned its data.",
+                "DHT data missing. This should never happen.
+                Management thread must have not returned its data after its end.",
             )
             .drain_running_gateways()
         {
