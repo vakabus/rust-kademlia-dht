@@ -29,12 +29,23 @@ use std::sync::mpsc::{Sender, Receiver};
 use multiaddr::Multiaddr;
 use gateway::ControlMsg;
 use std::time::Duration;
+use dht_control::DHTControlMsg;
+use id::UID;
 
 pub struct DHTService<T: DHTHasher> {
     hasher: T,
     gateways: Vec<Box<MsgGateway + Send>>,
-    control_thread: Option<(Sender<DHTControlMsg>, JoinHandle<DHTManagement>)>,
-    node_operation_data: Option<DHTManagement>,
+    control_thread: Option<ControlThread>,
+    bucket_size: usize,
+    concurrency_degree: usize,
+    peer_timeout: Duration,
+    msg_timeout: Duration,
+}
+
+struct ControlThread {
+    sender: Sender<DHTControlMsg>,
+    receiver: Receiver<(UID, Option<Vec<u8>>)>,
+    handle: JoinHandle<DHTManagement>,
 }
 
 /// This is public interface for this library
@@ -47,6 +58,7 @@ impl<T: DHTHasher> DHTService<T> {
         bucket_size: usize,
         concurrency_degree: usize,
         peer_timeout: Duration,
+        msg_timeout: Duration,
     ) -> DHTService<T> {
         info!(
             "Initiating DHTService, hash_size={}",
@@ -55,14 +67,11 @@ impl<T: DHTHasher> DHTService<T> {
         DHTService {
             hasher: hasher,
             gateways: Vec::new(),
-            node_operation_data: Some(DHTManagement::new(
-                T::get_hash_bytes_count(),
-                bucket_size,
-                concurrency_degree,
-                peer_timeout,
-                Duration::from_secs(30), //TODO hardcoded constant
-            )),
             control_thread: None,
+            bucket_size,
+            concurrency_degree,
+            peer_timeout,
+            msg_timeout,
         }
     }
 
@@ -71,32 +80,98 @@ impl<T: DHTHasher> DHTService<T> {
     /// Query value by key from the network, will return None when no value is found. When
     ///  the node is not connected to any other, it will answer based on local storage.
     pub fn query(&self, key: &Vec<u8>) -> Option<Vec<u8>> {
-        unimplemented!();
+        assert!(self.is_running());
+
+        info!("Query for key={:?}", key);
+
+        // send request
+        let hkey = UID::from(T::hash(key));
+        let q = DHTControlMsg::Query { key: hkey.clone() };
+        let res = self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .sender
+            .send(q);
+        if let Err(err) = res {
+            error!("Failed to send query to management thread.");
+            return None;
+        }
+
+        //wait for response
+        let res = self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .receiver
+            .recv();
+        match res {
+            Ok((rkey, value)) => {
+                if rkey != hkey {
+                    error!("Requested different key!");
+                    return None;
+                } else {
+                    return value;
+                }
+            }
+            Err(err) => {
+                error!("Failed to receive response to query.");
+                return None;
+            }
+        }
     }
 
 
-
     /// Save value to the network, when not connected, it will be stored locally.
-    pub fn save(&mut self, key: &Vec<u8>, data: &Vec<u8>) {
-        let key = T::hash(key);
+    pub fn save(&mut self, key: &Vec<u8>, data: Vec<u8>) {
+        assert!(self.is_running());
+
+        let key = UID::from(T::hash(key));
         let value = data.clone();
-        if self.is_running() {
-            //TODO send value to the management thread
-            unimplemented!();
-        } else {
-            panic!("You should not save data before starting the DHT.")
-        }
+        let s = DHTControlMsg::Save { key, value };
+        let res = self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .sender
+            .send(s);
+
     }
 
 
 
     /// Start threads, which will handle communication with the rest of the DHT network
     pub fn start(&mut self, seed: Multiaddr) {
+        info!("Starting...");
+
+        // error checks
         if self.gateways.len() == 0 {
             panic!("Can't start DHTService with no gateways...");
         }
 
+
+        // Generate communication channels
+        let (control_channel_send, control_channel_recv): (Sender<DHTControlMsg>,
+                                                           Receiver<DHTControlMsg>) =
+            mpsc::channel();
+        let (response_channel_send, response_channler_recv): (Sender<
+            (UID,
+             Option<Vec<u8>>),
+        >,
+                                                              Receiver<
+            (UID,
+             Option<Vec<u8>>),
+        >) = mpsc::channel();
         let (ch_send, gw_receive): (Sender<Msg>, Receiver<Msg>) = mpsc::channel();
+
+        // create DHTManagement object
+        let mut node = DHTManagement::new(
+            T::get_hash_bytes_count(),
+            self.bucket_size,
+            self.concurrency_degree,
+            self.peer_timeout,
+            self.msg_timeout,
+            gw_receive,
+            control_channel_recv,
+            response_channel_send,
+        );
 
         // start all gateway threads
         let mut iter = self.gateways.drain(..);
@@ -106,35 +181,23 @@ impl<T: DHTHasher> DHTService<T> {
                                                   Receiver<ControlMsg>) = mpsc::channel();
             let validator = gw.get_send_ability_checker();
 
-
-
             let handle = thread::Builder::new().name("gateway".to_string()).spawn(
                 move || { gw.run(ch_send, control_receive); },
             );
             let handle = handle.expect("Failed to spawn gateway thread.");
-            self.node_operation_data
-                .as_mut()
-                .expect(
-                    "DHT data missing. This should never happen. Can't add new gateway.",
-                )
-                .add_running_gateway(control_send, handle, validator);
+            node.add_running_gateway(control_send, handle, validator);
         }
 
         // start main management and processing thread
-        let (control_channel_send, control_channel_recv): (Sender<DHTControlMsg>,
-                                                           Receiver<DHTControlMsg>) =
-            mpsc::channel();
-        let node = self.node_operation_data.take().expect(
-            "Node operation data are not supplied.",
-        );
-        self.node_operation_data = None;
         let handle = thread::Builder::new()
             .name("management".to_string())
-            .spawn(move || {
-                dht_control::run(gw_receive, control_channel_recv, node)
-            })
+            .spawn(move || dht_control::run(node))
             .expect("Failed to spawn management thread;");
-        self.control_thread = Some((control_channel_send, handle));
+        self.control_thread = Some(ControlThread {
+            sender: control_channel_send,
+            handle: handle,
+            receiver: response_channler_recv,
+        });
     }
 
 
@@ -145,33 +208,27 @@ impl<T: DHTHasher> DHTService<T> {
 
 
     /// Stop all service threads
-    pub fn stop(&mut self) {
+    pub fn stop(&mut self) -> DHTManagement {
         // stop management thread and save its data
-        let (control_channel, handle) = self.control_thread.take().expect(
+        let ControlThread {
+            sender,
+            receiver,
+            handle,
+        } = self.control_thread.take().expect(
             "Control thread not running",
         );
         self.control_thread = None;
-        let _ = control_channel.send(DHTControlMsg::Stop);
-        let data = handle.join();
-        if let Ok(nod) = data {
-            self.node_operation_data = Some(nod);
-        } else {
-            panic!("Failed to join the DHT management thread.");
-        }
+        let _ = sender.send(DHTControlMsg::Stop);
+        let mut data = handle.join().unwrap();
 
         // stop and discard all connections to gateway threads
-        for gw in self.node_operation_data
-            .as_mut()
-            .expect(
-                "DHT data missing. This should never happen.
-                Management thread must have not returned its data after its end.",
-            )
-            .drain_running_gateways()
-        {
+        for gw in data.drain_running_gateways() {
             gw.command_sender.send(ControlMsg::Stop).expect(
                 "Gateway stopped by itself...",
             );
         }
+
+        data
     }
 
 

@@ -40,8 +40,6 @@ pub trait MsgGateway {
     fn recv(&mut self) -> Option<Msg>;
     /// Sends msg to the recipient, returns True if succeeded
     fn send(&mut self, msg: Msg) -> bool;
-    /// Returns address of the gateway, must be known before calling first recv()
-    fn get_address(&self) -> Multiaddr;
 
     fn get_send_ability_checker(&self) -> Box<SendAbilityChecker + Send>;
 

@@ -45,11 +45,27 @@ impl MsgGateway for MergerGateway {
         self.gateways[self.current_gw].recv()
     }
 
-    fn get_address(&self) -> Multiaddr {
-        unimplemented!();
-    }
-
     fn get_send_ability_checker(&self) -> Box<SendAbilityChecker + Send> {
-        unimplemented!();
+        Box::from(MergeSendChecker {
+            validators: self.gateways
+                .iter()
+                .map(|g| g.get_send_ability_checker())
+                .collect(),
+        })
+    }
+}
+
+struct MergeSendChecker {
+    validators: Vec<Box<SendAbilityChecker + Send>>,
+}
+
+impl SendAbilityChecker for MergeSendChecker {
+    fn can_send(&self, m: &Multiaddr) -> bool {
+        for val in self.validators.iter() {
+            if val.can_send(&m) {
+                return true;
+            }
+        }
+        false
     }
 }

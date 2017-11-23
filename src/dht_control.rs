@@ -9,6 +9,8 @@ use msg::*;
 use peer::*;
 use routing::*;
 use gateway::*;
+#[macro_use]
+use log::*;
 
 pub struct DHTManagement {
     peer_id: UID,
@@ -16,6 +18,9 @@ pub struct DHTManagement {
     data_store: HashMap<UID, Vec<u8>>,
     routing_table: RoutingTable,
     running_gateways: Vec<RunningGateway>,
+    incoming_msg: Receiver<Msg>,
+    control_channel: Receiver<DHTControlMsg>,
+    response_channel: Sender<(UID, Option<Vec<u8>>)>,
 }
 
 pub struct DHTConfig {
@@ -93,6 +98,9 @@ impl DHTManagement {
         concurrency_degree: usize,
         peer_timeout: Duration,
         msg_timeout: Duration,
+        incoming_msg: Receiver<Msg>,
+        control_channel: Receiver<DHTControlMsg>,
+        response_channel: Sender<(UID, Option<Vec<u8>>)>,
     ) -> DHTManagement {
         let my_peer_id = UID::random(hash_size);
         DHTManagement {
@@ -107,11 +115,16 @@ impl DHTManagement {
             peer_id: my_peer_id.clone(),
             data_store: HashMap::new(),
             routing_table: RoutingTable::new(my_peer_id, bucket_size, peer_timeout),
+            incoming_msg,
+            control_channel,
+            response_channel,
         }
     }
 
 
     fn _send_msg(&self, msg: Msg) -> bool {
+        debug!("SEND Msg: {:?}", msg);
+
         //TODO implement round robin
         for (i, rgw) in self.running_gateways.iter().enumerate() {
             if rgw.send_validator.can_send(&msg.addr) {
@@ -434,14 +447,11 @@ impl DHTManagement {
     }
 
 
-    fn handle_incoming_network_messages(
-        &mut self,
-        pending: &mut PendingOperations,
-        incoming_msg: &Receiver<Msg>,
-    ) {
+    fn handle_incoming_network_messages(&mut self, pending: &mut PendingOperations) {
         // handle received
-        let received = incoming_msg.try_recv();
+        let received = self.incoming_msg.try_recv();
         if let Ok(msg) = received {
+            debug!("RECV Msg: {:?}", msg);
             match msg.msg_type {
                 // PING request
                 MsgType::REQ_PING => {
@@ -464,7 +474,8 @@ impl DHTManagement {
                     self.routing_table_insert(pending, msg.peer_id, msg.addr);
                 }
                 MsgType::REQ_STORE { key, value } => {
-                    unimplemented!();
+                    self.data_store.insert(key, value);
+                    self.routing_table_insert(pending, msg.peer_id, msg.addr);
                 }
                 // any response
                 _ => {
@@ -491,20 +502,16 @@ impl DHTManagement {
     }
 }
 
-pub fn run(
-    incoming_msg: Receiver<Msg>,
-    control_channel: Receiver<DHTControlMsg>,
-    mut node: DHTManagement,
-) -> DHTManagement {
+pub fn run(mut node: DHTManagement) -> DHTManagement {
     let mut pending = PendingOperations::new();
 
     loop {
         // process incoming message
-        node.handle_incoming_network_messages(&mut pending, &incoming_msg);
+        node.handle_incoming_network_messages(&mut pending);
 
         // Process incoming commands from main application thread
         {
-            let maybe_command = control_channel.try_recv();
+            let maybe_command = node.control_channel.try_recv();
             if let Ok(cmd) = maybe_command {
                 // process incoming command
                 match cmd {
@@ -563,5 +570,5 @@ fn result_store(mgmt: &mut DHTManagement, peer_id: UID, peers: Vec<Peer>) {
 }
 
 fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>) {
-    unimplemented!();
+    mgmt.response_channel.send((key, value));
 }
