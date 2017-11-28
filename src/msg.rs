@@ -13,11 +13,11 @@ pub struct Msg {
 }
 
 impl Msg {
-    pub fn new_ping(mid: &UID, dst: &Peer) -> Msg {
+    pub fn new_ping(mid: &UID, dst: &Multiaddr) -> Msg {
         Msg {
             msg_id: UID::random(mid.len()),
             peer_id: mid.clone(),
-            addr: dst.addr.clone(),
+            addr: dst.clone(),
             msg_type: MsgType::REQ_PING,
         }
     }

@@ -80,6 +80,14 @@ impl KBucket {
     pub fn len(&self) -> usize {
         self.peers.len()
     }
+
+    pub fn has_peer(&self, id: &UID) -> bool {
+        self.peers
+            .iter()
+            .filter(|x| x.peer_id == *id)
+            .next()
+            .is_some()
+    }
 }
 
 impl RoutingTable {
@@ -217,5 +225,9 @@ impl RoutingTable {
 
     pub fn len(&self) -> usize {
         self.buckets.iter().map(|b| b.len()).sum()
+    }
+
+    pub fn has_peer(&self, id: &UID) -> bool {
+        self.get_bucket(id.bucket_number()).has_peer(id)
     }
 }

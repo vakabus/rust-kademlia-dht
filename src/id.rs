@@ -13,14 +13,14 @@ fn count_leading_zeros(b: u8) -> usize {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize, Hash)]
 pub struct UID {
-    peer_id: Vec<u8>,
+    bytes: Vec<u8>,
 }
 
 
 /// UID is little-endian reprezentation of node's ID. Saved in an array of bytes.
 impl UID {
     pub fn new(id: &Vec<u8>) -> UID {
-        UID { peer_id: id.clone() }
+        UID { bytes: id.clone() }
     }
 
     pub fn random(size: usize) -> UID {
@@ -40,68 +40,67 @@ impl UID {
         let mut i = 0;
         let mut leading_zeros = leading_zeros;
         while leading_zeros >= 8 {
-            random.peer_id[i] = 0;
+            random.bytes[i] = 0;
             leading_zeros -= 8;
             i += 1;
         }
-        random.peer_id[i] = (random.peer_id[i] & (255u8 >> leading_zeros)) |
-            (1 << (7 - leading_zeros));
+        random.bytes[i] = (random.bytes[i] & (255u8 >> leading_zeros)) | (1 << (7 - leading_zeros));
 
         random
     }
 
     pub fn bucket_number(&self) -> usize {
-        for (i, v) in self.peer_id.iter().enumerate() {
+        for (i, v) in self.bytes.iter().enumerate() {
             if *v > 0 {
                 return i * 8 + count_leading_zeros(*v);
             }
         }
 
-        self.peer_id.len() * 8
+        self.bytes.len() * 8
     }
 
     pub fn distance(&self, other: &UID) -> UID {
-        assert_eq!(self.peer_id.len(), other.peer_id.len());
+        assert_eq!(self.bytes.len(), other.bytes.len());
 
-        let res: Vec<u8> = (&self.peer_id)
+        let res: Vec<u8> = (&self.bytes)
             .iter()
-            .zip((&other.peer_id).iter())
+            .zip((&other.bytes).iter())
             .map(|(x, y)| x ^ y)
             .collect();
         UID::from(res)
     }
 
     pub fn len(&self) -> usize {
-        self.peer_id.len()
+        self.bytes.len()
     }
 
     pub fn bit_at(&self, pos: usize) -> bool {
-        assert!(pos > self.peer_id.len() * 8);
+        assert!(pos > self.bytes.len() * 8);
 
         let b = pos / 8;
         let c = pos % 8;
 
-        self.peer_id[b] & (1 << c) > 0
+        self.bytes[b] & (1 << c) > 0
     }
 
     pub fn bytes(&self) -> &Vec<u8> {
-        &self.peer_id
+        &self.bytes
     }
 
     pub fn owned_bytes(self) -> Vec<u8> {
-        self.peer_id
+        self.bytes
     }
 }
 
 impl Clone for UID {
     fn clone(&self) -> UID {
-        UID { peer_id: self.peer_id.clone() }
+        UID { bytes: self.bytes.clone() }
     }
 }
 
 impl From<Vec<u8>> for UID {
     fn from(bytes: Vec<u8>) -> UID {
-        UID { peer_id: bytes }
+        UID { bytes: bytes }
     }
 }
 

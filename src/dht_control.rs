@@ -48,6 +48,7 @@ enum PendingOperationExec {
         old: Peer,
         new: Peer,
     },
+    PongSimple { exec: fn(&mut DHTManagement, omsg: Option<Msg>), },
     Lookup {
         exec: fn(&mut DHTManagement,
                  pending: &mut PendingOperations,
@@ -62,6 +63,7 @@ impl PendingOperationExec {
         match self {
             PendingOperationExec::Pong { exec, old, new } => exec(mgmt, omsg, old, new),
             PendingOperationExec::Lookup { exec, target } => exec(mgmt, pending, omsg, target),
+            PendingOperationExec::PongSimple { exec } => exec(mgmt, omsg),
         }
     }
 }
@@ -89,6 +91,7 @@ pub enum DHTControlMsg {
     Stop,
     Save { key: UID, value: Vec<u8> },
     Query { key: UID },
+    Connect { addr: Multiaddr },
 }
 
 impl DHTManagement {
@@ -137,8 +140,13 @@ impl DHTManagement {
         false
     }
 
-    fn msg_ping(&mut self, pending: &mut PendingOperations, peer: &Peer, f: PendingOperationExec) {
-        let msg = Msg::new_ping(&self.peer_id, &peer);
+    fn msg_ping(
+        &mut self,
+        pending: &mut PendingOperations,
+        addr: &Multiaddr,
+        f: PendingOperationExec,
+    ) {
+        let msg = Msg::new_ping(&self.peer_id, addr);
         pending.packets.insert(
             msg.msg_id.clone(),
             (f, Instant::now()),
@@ -226,21 +234,31 @@ impl DHTManagement {
     fn routing_table_insert(
         &mut self,
         pending: &mut PendingOperations,
-        peer_id: UID,
+        peer_id: Option<UID>,
         addr: Multiaddr,
     ) {
-        let res = self.routing_table.update_or_insert_peer(peer_id, addr);
-        if let Err((new, old)) = res {
-            let old = old.clone();
+        if let Some(peer_id) = peer_id {
+            let res = self.routing_table.update_or_insert_peer(peer_id, addr);
+            if let Err((new, old)) = res {
+                let old = old.clone();
+                self.msg_ping(
+                    pending,
+                    &old.addr.clone(),
+                    PendingOperationExec::Pong {
+                        exec: DHTManagement::handle_incoming_pong,
+                        old: old,
+                        new: new,
+                    },
+                );
+            }
+        } else {
             self.msg_ping(
                 pending,
-                &old.clone(),
-                PendingOperationExec::Pong {
-                    exec: DHTManagement::handle_incoming_pong,
-                    old: old,
-                    new: new,
+                &addr,
+                PendingOperationExec::PongSimple {
+                    exec: DHTManagement::handle_incoming_pong_simple,
                 },
-            );
+            )
         }
     }
 
@@ -252,6 +270,19 @@ impl DHTManagement {
             self.routing_table.remove_peer(&old.peer_id);
             let _ = self.routing_table.insert_peer(new);
         };
+    }
+
+    fn handle_incoming_pong_simple(&mut self, msg: Option<Msg>) {
+        if let Some(msg) = msg {
+            let has_peer = self.routing_table.has_peer(&msg.peer_id);
+            if has_peer {
+                // the peer already exist, do nothing
+            } else {
+                self.routing_table.insert_peer(
+                    Peer::new(msg.peer_id, msg.addr),
+                );
+            }
+        }
     }
 
     fn locale_k_closest_nodes(
@@ -386,13 +417,13 @@ impl DHTManagement {
             .map(|x| (x.0, x.1.clone()))
             .filter(|x| !(x.1).1)
             .next();
-        if next.is_none() {
-            // no unprocessed peer found, terminate
-            return;
-        }
 
-        let (index, ppp) = next.unwrap().clone();
-        let (peer, _) = ppp;
+        // get index of next peer
+        // if no next peer, the index is made big enough to be considered out of range
+        let index = next.as_ref().map(|x| x.0).unwrap_or(
+            self.config.concurrency_degree +
+                self.config.bucket_size,
+        );
 
         //if found peer is not in the first alpha+bucket_size, consider the lookup as finished
         if index >= self.config.concurrency_degree + self.config.bucket_size {
@@ -422,6 +453,9 @@ impl DHTManagement {
             // no longer have access to neccessary data)
             return;
         }
+
+        let (_, ppp) = next.unwrap().clone();
+        let (peer, _) = ppp;
 
         // mark it as being processed
         data.peers = data.peers
@@ -456,12 +490,12 @@ impl DHTManagement {
                 // PING request
                 MsgType::REQ_PING => {
                     self.msg_pong(msg.msg_id, &msg.addr);
-                    self.routing_table_insert(pending, msg.peer_id, msg.addr);
+                    self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 MsgType::REQ_FIND_NODE { peer_id } => {
                     // reply with list of best known peers
                     self.msg_list_peers(msg.msg_id, &msg.addr, &peer_id);
-                    self.routing_table_insert(pending, msg.peer_id, msg.addr);
+                    self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 MsgType::REQ_FIND_VALUE { key } => {
                     if self.data_store.contains_key(&key) {
@@ -471,15 +505,15 @@ impl DHTManagement {
                         // send closest known peers
                         self.msg_list_peers(msg.msg_id, &msg.addr, &UID::from(key));
                     }
-                    self.routing_table_insert(pending, msg.peer_id, msg.addr);
+                    self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 MsgType::REQ_STORE { key, value } => {
                     self.data_store.insert(key, value);
-                    self.routing_table_insert(pending, msg.peer_id, msg.addr);
+                    self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 // any response
                 _ => {
-                    self.routing_table_insert(pending, msg.peer_id.clone(), msg.addr.clone());
+                    self.routing_table_insert(pending, Some(msg.peer_id.clone()), msg.addr.clone());
                     let pend = pending.packets.remove(&msg.msg_id);
                     if let Some((run, _)) = pend {
                         run.exec(self, pending, Some(msg));
@@ -531,6 +565,9 @@ pub fn run(mut node: DHTManagement) -> DHTManagement {
                             node.find_value_for_key(&mut pending, key, result_query)
                         }
                     }
+                    DHTControlMsg::Connect { addr } => {
+                        node.routing_table_insert(&mut pending, None, addr);
+                    }
                 }
             }
         }
@@ -570,5 +607,9 @@ fn result_store(mgmt: &mut DHTManagement, peer_id: UID, peers: Vec<Peer>) {
 }
 
 fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>) {
+    // save value for future use
+    if value.is_some() {
+        mgmt.data_store.insert(key.clone(), value.clone().unwrap());
+    }
     mgmt.response_channel.send((key, value));
 }

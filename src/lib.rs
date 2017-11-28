@@ -1,3 +1,20 @@
+//! This is crate is supposed to make running DHT's easy.
+//!
+//! # Design
+//!
+//! The DHT node in this library runs always in separate thread. The public API is non-blocking
+//! except for `query`. When you interact with the client, you are communicating with
+//! the management thread - the thread handling all the logic. The management thread processes all
+//! incoming messages, reacts to them and it handles your request. But actual network
+//! communication is done separately.
+//!
+//! The management thread runs alongside with gateway threads. Their only purpose is to handle
+//! networking. There can be as many gateways as you wish and each one of them can communicate
+//! in a different way, using different protocol and format. Build-in gateway is currently only
+//! `UdpGateway`, which handles simple communication directly over UDP with straightforward
+//! serialization format using `serde` crate. The only limitation in variaty of gateways is, that
+//! the address must be representable using [multiaddr](https://github.com/multiformats/multiaddr).
+
 extern crate multiaddr;
 extern crate rand;
 extern crate crypto;
@@ -82,11 +99,12 @@ impl<T: DHTHasher> DHTService<T> {
     pub fn query(&self, key: &Vec<u8>) -> Option<Vec<u8>> {
         assert!(self.is_running());
 
-        info!("Query for key={:?}", key);
-
         // send request
         let hkey = UID::from(T::hash(key));
         let q = DHTControlMsg::Query { key: hkey.clone() };
+
+        info!("Query for key={:?}, hashed={:?}", key, hkey);
+
         let res = self.control_thread
             .as_ref()
             .expect("When DHT is running, control thread should be available.")
@@ -135,10 +153,22 @@ impl<T: DHTHasher> DHTService<T> {
 
     }
 
+    pub fn connect(&mut self, seed: Multiaddr) {
+        assert!(self.is_running());
+
+        info!("Adding new seed... ({:?})", seed);
+
+        self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .sender
+            .send(DHTControlMsg::Connect { addr: seed });
+    }
+
 
 
     /// Start threads, which will handle communication with the rest of the DHT network
-    pub fn start(&mut self, seed: Multiaddr) {
+    pub fn start(&mut self) {
         info!("Starting...");
 
         // error checks
