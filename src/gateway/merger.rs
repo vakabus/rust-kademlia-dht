@@ -2,6 +2,7 @@ use gateway::{MsgGateway, SendAbilityChecker};
 use multiaddr::Multiaddr;
 use msg::Msg;
 
+/// Gateways implementation, that can contain other gateways. It's all running in one thread.
 pub struct MergerGateway {
     validators: Vec<Box<SendAbilityChecker>>,
     gateways: Vec<Box<MsgGateway>>,

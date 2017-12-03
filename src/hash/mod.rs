@@ -1,3 +1,5 @@
+//! Generic hash interface.
+
 pub mod sha1;
 
 pub trait DHTHasher {

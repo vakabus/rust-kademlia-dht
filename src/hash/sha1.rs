@@ -1,3 +1,5 @@
+//! SHA1 DHTHasher implementation using `std` library hashing
+
 use hash::DHTHasher;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;

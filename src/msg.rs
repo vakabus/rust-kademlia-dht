@@ -18,7 +18,7 @@ impl Msg {
             msg_id: UID::random(mid.len()),
             peer_id: mid.clone(),
             addr: dst.clone(),
-            msg_type: MsgType::REQ_PING,
+            msg_type: MsgType::ReqPing,
         }
     }
     pub fn new_pong(mid: &UID, msg_id: UID, dst: &Multiaddr) -> Msg {
@@ -26,7 +26,7 @@ impl Msg {
             msg_id: UID::random(mid.len()),
             addr: dst.clone(),
             peer_id: mid.clone(),
-            msg_type: MsgType::RES_PONG,
+            msg_type: MsgType::ResPong,
         }
     }
 
@@ -35,7 +35,7 @@ impl Msg {
             msg_id: UID::random(mid.len()),
             addr: dst.clone(),
             peer_id: mid.clone(),
-            msg_type: MsgType::REQ_FIND_NODE { peer_id: find_peer.clone() },
+            msg_type: MsgType::ReqFindNode { peer_id: find_peer.clone() },
         }
     }
 
@@ -50,7 +50,7 @@ impl Msg {
             msg_id: msg_id,
             peer_id: mid.clone(),
             addr: dst.clone(),
-            msg_type: MsgType::RES_VALUE_FOUND {
+            msg_type: MsgType::ResValueFound {
                 key: key,
                 value: value.clone(),
             },
@@ -62,7 +62,7 @@ impl Msg {
             peer_id: mid.clone(),
             msg_id: msg_id,
             addr: dst.clone(),
-            msg_type: MsgType::RES_LIST_PEERS { peers },
+            msg_type: MsgType::ResListPeers { peers },
         }
     }
 
@@ -71,7 +71,7 @@ impl Msg {
             peer_id: mid.clone(),
             msg_id: UID::random(mid.len()),
             addr: dst.clone(),
-            msg_type: MsgType::REQ_FIND_VALUE { key: find_value.clone() },
+            msg_type: MsgType::ReqFindValue { key: find_value.clone() },
         }
     }
 
@@ -80,7 +80,7 @@ impl Msg {
             peer_id: mid.clone(),
             msg_id: UID::random(mid.len()),
             addr: dst.clone(),
-            msg_type: MsgType::REQ_STORE {
+            msg_type: MsgType::ReqStore {
                 key: key,
                 value: value.clone(),
             },
@@ -90,13 +90,13 @@ impl Msg {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MsgType {
-    REQ_PING,
-    REQ_STORE { key: UID, value: Vec<u8> },
-    REQ_FIND_NODE { peer_id: UID },
-    REQ_FIND_VALUE { key: UID },
-    RES_PONG,
-    RES_LIST_PEERS { peers: Vec<MsgPeer> },
-    RES_VALUE_FOUND { key: UID, value: Vec<u8> },
+    ReqPing,
+    ReqStore { key: UID, value: Vec<u8> },
+    ReqFindNode { peer_id: UID },
+    ReqFindValue { key: UID },
+    ResPong,
+    ResListPeers { peers: Vec<MsgPeer> },
+    ResValueFound { key: UID, value: Vec<u8> },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

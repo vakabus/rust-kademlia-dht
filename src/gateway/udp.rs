@@ -6,6 +6,7 @@ use std::time::Duration;
 use std::str::FromStr;
 use gateway::serialize::binary::{serialize, parse, BinMsg};
 
+/// UDP gateway implementation using `serde` crate for serialization.
 pub struct UdpGateway {
     socket: UdpSocket,
 }

@@ -51,3 +51,14 @@ impl Ord for Peer {
         )
     }
 }
+
+pub struct PeerPair {
+    pub old: Peer,
+    pub new: Peer,
+}
+
+impl PeerPair {
+    pub fn new(old: Peer, new: Peer) -> PeerPair {
+        PeerPair { old, new }
+    }
+}

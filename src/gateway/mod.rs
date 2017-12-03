@@ -1,3 +1,5 @@
+//! Module handling lower-layer network communications.
+//!
 //! The DHT is designed to be able to work with network interface of any kind. To handle that, it
 //! introduces concept of message gateways. Each gateway specifies to what kind of network
 //! addresses it can send data. When communicating, the main DHT management than chooses, which
@@ -34,7 +36,7 @@ pub enum ControlMsg {
 }
 
 
-
+/// Interface required by all MsgGateways...
 pub trait MsgGateway {
     /// does not block, returns Some(Msg) when received
     fn recv(&mut self) -> Option<Msg>;
@@ -48,7 +50,7 @@ pub trait MsgGateway {
             // handle receiving
             let m = self.recv();
             if let Some(msg) = m {
-                msg_channel.send(msg);
+                let _ = msg_channel.send(msg);
             }
 
             let control_msg = command_channel.try_recv();
@@ -64,11 +66,14 @@ pub trait MsgGateway {
     }
 }
 
-
+/// Trait used for determining, whether gateway is appropriate for some message.
 pub trait SendAbilityChecker {
     fn can_send(&self, maddr: &Multiaddr) -> bool;
 }
 
+
+/// Implementation of `SendAbilityChecker` which checks, if the list of encapsulated protocols is
+/// the same in `msg` and in the gateway.
 pub struct ProtocolBasedSendAbilityChecker {
     maddr: Multiaddr,
 }

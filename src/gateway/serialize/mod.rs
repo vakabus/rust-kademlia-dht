@@ -1,14 +1,13 @@
-#[macro_escape]
-use serde_derive;
-//use serde::{Serialize,Deserialize};
+//! Module with build-in serialization methods.
 
 pub mod binary;
 
-use multiaddr::{ToMultiaddr, Multiaddr};
-use peer::Peer;
+use multiaddr::Multiaddr;
 use id::UID;
 use msg::{Msg, MsgType};
 
+
+/// Struct for Msg, that is more directly serializable and supports convertion between it and `Msg`
 #[derive(Serialize, Deserialize)]
 pub struct SerializableMsg {
     pub msg_id: Vec<u8>,

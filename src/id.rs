@@ -32,19 +32,28 @@ impl UID {
     }
 
     pub fn random_within_bucket(size: usize, leading_zeros: usize) -> UID {
-        if size < leading_zeros {
+        if size * 8 + 1 < leading_zeros {
             panic!("Can't generate more leading zeros than the length of the ID.");
         };
 
         let mut random = UID::random(size);
+
+        debug!("Random ID {:?}", random);
+
         let mut i = 0;
+        let ll = leading_zeros;
         let mut leading_zeros = leading_zeros;
         while leading_zeros >= 8 {
             random.bytes[i] = 0;
             leading_zeros -= 8;
             i += 1;
         }
-        random.bytes[i] = (random.bytes[i] & (255u8 >> leading_zeros)) | (1 << (7 - leading_zeros));
+        if i < size {
+            random.bytes[i] = (random.bytes[i] & (255u8 >> leading_zeros)) |
+                (1 << (7 - leading_zeros));
+        }
+
+        debug!("Generating {:?} with size {} bucket {}", random, size, ll);
 
         random
     }

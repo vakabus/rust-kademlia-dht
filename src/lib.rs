@@ -130,7 +130,7 @@ impl<T: DHTHasher> DHTService<T> {
                     return value;
                 }
             }
-            Err(err) => {
+            Err(_) => {
                 error!("Failed to receive response to query.");
                 return None;
             }
@@ -139,21 +139,30 @@ impl<T: DHTHasher> DHTService<T> {
 
 
     /// Save value to the network, when not connected, it will be stored locally.
-    pub fn save(&mut self, key: &Vec<u8>, data: Vec<u8>) {
+    pub fn save(
+        &mut self,
+        key: &Vec<u8>,
+        data: Vec<u8>,
+    ) -> std::result::Result<(), std::sync::mpsc::SendError<dht_control::DHTControlMsg>> {
         assert!(self.is_running());
+
+        info!("Saving data key={:?} data={:?}", key, data);
 
         let key = UID::from(T::hash(key));
         let value = data.clone();
         let s = DHTControlMsg::Save { key, value };
-        let res = self.control_thread
+        self.control_thread
             .as_ref()
             .expect("When DHT is running, control thread should be available.")
             .sender
-            .send(s);
+            .send(s)
 
     }
 
-    pub fn connect(&mut self, seed: Multiaddr) {
+    pub fn connect(
+        &mut self,
+        seed: Multiaddr,
+    ) -> std::result::Result<(), std::sync::mpsc::SendError<dht_control::DHTControlMsg>> {
         assert!(self.is_running());
 
         info!("Adding new seed... ({:?})", seed);
@@ -162,7 +171,7 @@ impl<T: DHTHasher> DHTService<T> {
             .as_ref()
             .expect("When DHT is running, control thread should be available.")
             .sender
-            .send(DHTControlMsg::Connect { addr: seed });
+            .send(DHTControlMsg::Connect { addr: seed })
     }
 
 
@@ -272,7 +281,8 @@ impl<T: DHTHasher> DHTService<T> {
 impl<T: DHTHasher> Drop for DHTService<T> {
     fn drop(&mut self) {
         if self.is_running() {
-            panic!("The DHTService MUST be stopped before being dropped!");
+            self.stop();
+            //panic!("The DHTService MUST be stopped before being dropped!");
         }
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "example"
+version = "0.1.0"
+authors = ["Vasek Sraier <git@vakabus.cz>"]
+
+[dependencies]
+kademlia_dht = { path = '../kademlia_dht' }
+log = '*'
+multiaddr = '*'
+env_logger = '*'
+argparse = '*'
