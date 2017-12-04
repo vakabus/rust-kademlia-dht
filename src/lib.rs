@@ -57,6 +57,7 @@ pub struct DHTService<T: DHTHasher> {
     concurrency_degree: usize,
     peer_timeout: Duration,
     msg_timeout: Duration,
+    storage_timeout: Duration,
 }
 
 struct ControlThread {
@@ -76,6 +77,7 @@ impl<T: DHTHasher> DHTService<T> {
         concurrency_degree: usize,
         peer_timeout: Duration,
         msg_timeout: Duration,
+        storage_timeout: Duration,
     ) -> DHTService<T> {
         info!(
             "Initiating DHTService, hash_size={}",
@@ -89,6 +91,7 @@ impl<T: DHTHasher> DHTService<T> {
             concurrency_degree,
             peer_timeout,
             msg_timeout,
+            storage_timeout,
         }
     }
 
@@ -207,6 +210,7 @@ impl<T: DHTHasher> DHTService<T> {
             self.concurrency_degree,
             self.peer_timeout,
             self.msg_timeout,
+            self.storage_timeout,
             gw_receive,
             control_channel_recv,
             response_channel_send,

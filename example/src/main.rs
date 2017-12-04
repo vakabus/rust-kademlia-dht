@@ -52,6 +52,7 @@ fn main() {
         3,
         Duration::from_secs(15 * 60), // peer timeout
         Duration::from_secs(3), // communication timeout
+        Duration::from_secs(60 * 60), // storage timeout
     );
 
     let udp_gateway = UdpGateway::new(format!("{}:{}", ip, port).as_str());

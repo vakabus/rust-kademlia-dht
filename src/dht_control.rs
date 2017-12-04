@@ -5,7 +5,13 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver};
 use std::thread::JoinHandle;
 use std::time::{Instant, Duration};
+use std::ops::Sub;
+
+
+use rand::{thread_rng, Rng};
 use multiaddr::Multiaddr;
+
+
 
 use id::*;
 use msg::*;
@@ -24,6 +30,7 @@ pub struct DHTManagement {
     response_channel: Sender<(UID, Option<Vec<u8>>)>,
     running_discovery: bool,
     last_bucket_refresh: Instant,
+    last_data_invalidation: Instant,
 }
 
 pub struct DHTConfig {
@@ -32,6 +39,7 @@ pub struct DHTConfig {
     pub peer_timeout: Duration,
     pub bucket_size: usize,
     pub msg_timeout: Duration,
+    pub storage_timeout: Duration,
 }
 
 pub struct RunningGateway {
@@ -73,7 +81,7 @@ impl PendingOperationExec {
 
 enum ResultExec {
     Peer { exec: fn(&mut DHTManagement, UID, Vec<Peer>), },
-    Value { exec: fn(&mut DHTManagement, UID, Option<Vec<u8>>), },
+    Value { exec: fn(&mut DHTManagement, UID, Option<Vec<u8>>, usize), },
 }
 
 impl PendingOperations {
@@ -104,6 +112,7 @@ impl DHTManagement {
         concurrency_degree: usize,
         peer_timeout: Duration,
         msg_timeout: Duration,
+        data_timeout: Duration,
         incoming_msg: Receiver<Msg>,
         control_channel: Receiver<DHTControlMsg>,
         response_channel: Sender<(UID, Option<Vec<u8>>)>,
@@ -116,6 +125,7 @@ impl DHTManagement {
                 concurrency_degree: concurrency_degree,
                 peer_timeout: peer_timeout,
                 msg_timeout: msg_timeout,
+                storage_timeout: data_timeout,
             },
             running_gateways: Vec::new(),
             peer_id: my_peer_id.clone(),
@@ -126,6 +136,7 @@ impl DHTManagement {
             response_channel,
             running_discovery: false,
             last_bucket_refresh: Instant::now(),
+            last_data_invalidation: Instant::now()
         }
     }
 
@@ -133,8 +144,13 @@ impl DHTManagement {
     fn _send_msg(&self, msg: Msg) -> bool {
         debug!("SEND Msg: {:?}", msg);
 
-        //TODO implement round robin
-        for (i, rgw) in self.running_gateways.iter().enumerate() {
+        // shuffle indexes for round robin
+        let mut indexes: Vec<usize> = (0..self.running_gateways.len()).collect();
+        thread_rng().shuffle(&mut indexes);
+
+        // select one that supports sending
+        for i in indexes {
+            let rgw = &self.running_gateways[i];
             if rgw.send_validator.can_send(&msg.addr) {
                 // send it
                 let s = rgw.command_sender.send(ControlMsg::SendMsg(msg));
@@ -358,7 +374,7 @@ impl DHTManagement {
         &mut self,
         pending: &mut PendingOperations,
         key: UID,
-        f: fn(&mut DHTManagement, UID, Option<Vec<u8>>),
+        f: fn(&mut DHTManagement, UID, Option<Vec<u8>>, usize),
     ) {
         info!("Looking for value for key={:?}", key);
         // get alpha nearest known nodes
@@ -372,7 +388,7 @@ impl DHTManagement {
                 "No peers to query data from. Routing-table size is {}",
                 self.routing_table.len()
             );
-            f(self, key, None);
+            f(self, key, None, 0);
             return;
         }
 
@@ -450,7 +466,7 @@ impl DHTManagement {
                     if let ResultExec::Value { exec } = data.result {
                         // deliver result
                         if key == target {
-                            exec(self, key, Some(value));
+                            exec(self, key, Some(value), data.peers.len());
                             return;
                         } else {
                             eprintln!("Unexpected key value pair. Requested a different one");
@@ -501,7 +517,7 @@ impl DHTManagement {
                     );
                 }
                 ResultExec::Value { exec } => {
-                    exec(self, target, None);
+                    exec(self, target, None, data.peers.len());
                 }
             }
 
@@ -637,7 +653,7 @@ impl DHTManagement {
                     // check if we already have it
                     if self.data_store.contains_key(&key) {
                         let value = self.data_store.get(&key).unwrap().clone();
-                        result_query(self, key, Some(value.0));
+                        result_query(self, key, Some(value.0), 0);
                     } else {
                         self.find_value_for_key(pending, key, result_query)
                     }
@@ -668,8 +684,25 @@ impl DHTManagement {
                 let random = UID::random_within_bucket(self.config.hash_size, i);
                 self.locale_k_closest_nodes(pending, random, result_bucket_refresh);
             }
+
+            self.last_bucket_refresh = Instant::now();
         }
-        self.last_bucket_refresh = Instant::now();
+    }
+
+    fn invalidate_old_data(&mut self, force: bool) {
+        if self.last_data_invalidation.elapsed() > self.config.peer_timeout || force {
+            let mut to_remove = Vec::new();
+            for (k,v) in self.data_store.iter() {
+                if self.config.storage_timeout < (v.1).elapsed() {
+                    to_remove.push(k.clone());
+                }
+            }
+            for tr in to_remove {
+                self.data_store.remove(&tr);
+            }
+
+            self.last_data_invalidation = Instant::now();
+        }
     }
 }
 
@@ -692,15 +725,7 @@ pub fn run(mut node: DHTManagement) -> DHTManagement {
         }
         can_sleep = can_sleep & !rcvd;
 
-        // Handle gateways diing
-        {
-            // TODO implement
-            // it might be caused by disconnecting from the network, or something similar
-            // the best would be to report it to the main app thread and remove it
-        }
-
         // handle not enough peers in routing table
-        // TODO hardcoded constant
         let routing_table_size = node.routing_table.len();
         if !node.running_discovery && routing_table_size > 0 &&
             routing_table_size < node.config.bucket_size
@@ -714,16 +739,13 @@ pub fn run(mut node: DHTManagement) -> DHTManagement {
 
             node.refresh_buckets(&mut pending, true);
             can_sleep = false;
-
-            /*
-            // search for myself
-            let mid = node.peer_id.clone();
-            node.locale_k_closest_nodes(&mut pending, mid, result_discovery);
-            */
         }
 
         // Refresh buckets every peer timeout
         node.refresh_buckets(&mut pending, false);
+
+        //Invalidate data every peer timeout (peer timeout is expected to be shorted than data timeout)
+        node.invalidate_old_data(false);
 
         if can_sleep {
             // nothing to do last time, sleep for a short time not to waste CPU cycles doing nothing
@@ -743,12 +765,16 @@ fn result_store(mgmt: &mut DHTManagement, peer_id: UID, peers: Vec<Peer>) {
     }
 }
 
-fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>) {
+fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>, n_peers: usize) {
     info!("Delivering query results...");
 
     // save value for future use
-    if value.is_some() {
-        mgmt.data_store.insert(key.clone(), (value.clone().unwrap(), Instant::now()));
+    if value.is_some() && !mgmt.data_store.contains_key(&key) {
+        // exponential backoff for storage time by number of peers asked
+        let hops_aprox = (n_peers / mgmt.config.bucket_size) + 1;
+        let before = Duration::from_secs(mgmt.config.storage_timeout.as_secs() / (2 as u64).pow(hops_aprox as u32));
+        let inst = Instant::now().sub(before);
+        mgmt.data_store.insert(key.clone(), (value.clone().unwrap(), inst));
     }
     mgmt.response_channel.send((key, value)).expect("Failed to deliver result!");
 }

@@ -88,6 +88,7 @@ fn new_udp_sha1_node(addr: &str) -> DHTService<sha1::SHA1Hasher> {
         3,
         Duration::from_secs(15 * 60), // peer timeout
         Duration::from_secs(3), // communication timeout
+        Duration::from_secs(60 * 60), // storage timeout
     );
     let udp_gateway = UdpGateway::new(addr);
 
@@ -125,6 +126,7 @@ fn new_udp_badhash_node(addr: &str) -> DHTService<BadTwoByteHasher> {
         1,
         Duration::from_secs(15 * 60), // peer timeout
         Duration::from_secs(3), // communication timeout
+        Duration::from_secs(60 * 60), // storage timeout
     );
     let udp_gateway = UdpGateway::new(addr);
 

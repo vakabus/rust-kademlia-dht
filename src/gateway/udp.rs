@@ -106,8 +106,8 @@ mod tests {
     fn test_udp_send_recv_internal() {
         let p = vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8];
 
-        let mut gw1 = UdpGateway::new("127.0.0.3:12345");
-        let mut gw2 = UdpGateway::new("127.0.0.2:12345");
+        let gw1 = UdpGateway::new("127.0.0.3:12345");
+        let gw2 = UdpGateway::new("127.0.0.2:12345");
 
         thread::spawn(move || {
             let _ = gw1._send(BinMsg::new(
