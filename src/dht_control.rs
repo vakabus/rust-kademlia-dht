@@ -1,7 +1,7 @@
 //! This module is the actual implementation of DHT management thread logic. It handles high level
 //! communication with other peers, also responds to commands from main application thread.
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver};
 use std::thread::JoinHandle;
 use std::time::{Instant, Duration};
@@ -16,7 +16,7 @@ use gateway::*;
 pub struct DHTManagement {
     peer_id: UID,
     config: DHTConfig,
-    data_store: HashMap<UID, Vec<u8>>,
+    data_store: HashMap<UID, (Vec<u8>,Instant)>,
     routing_table: RoutingTable,
     running_gateways: Vec<RunningGateway>,
     incoming_msg: Receiver<Msg>,
@@ -199,7 +199,8 @@ impl DHTManagement {
 
     /// Sends key-value to peer
     fn msg_value_found(&self, msg_id: UID, dst: &Multiaddr, key: &UID) {
-        let value: &Vec<u8> = self.data_store.get(key).unwrap();
+        let res = self.data_store.get(key).unwrap();
+        let value = &(res.0);
         self._send_msg(Msg::new_value_found(
             &self.peer_id,
             msg_id,
@@ -221,8 +222,9 @@ impl DHTManagement {
 
     /// Sends StoreMsg to peer.
     fn msg_store(&self, dst: &Multiaddr, key: &UID) {
-        let value: &Vec<u8> = self.data_store.get(key).unwrap();
-        let msg = Msg::new_store(&self.peer_id, dst, key.clone(), value);
+        let res = self.data_store.get(key).unwrap();
+        let value = &res.0;
+        let msg = Msg::new_store(&self.peer_id, dst, key.clone(), &value);
         self._send_msg(msg);
     }
 
@@ -586,7 +588,7 @@ impl DHTManagement {
                     self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 MsgType::ReqStore { key, value } => {
-                    self.data_store.insert(key, value);
+                    self.data_store.insert(key, (value, Instant::now()));
                     self.routing_table_insert(pending, Some(msg.peer_id), msg.addr);
                 }
                 // any response
@@ -626,7 +628,7 @@ impl DHTManagement {
                 DHTControlMsg::Stop => return (true, true),
                 DHTControlMsg::Save { key, value } => {
                     // save the data locally
-                    self.data_store.insert(key.clone(), value.clone());
+                    self.data_store.insert(key.clone(), (value.clone(), Instant::now()));
                     // distribute the data further into the network
                     info!("Trying to distribute data into the network...");
                     self.locale_k_closest_nodes(pending, key, result_store);
@@ -635,7 +637,7 @@ impl DHTManagement {
                     // check if we already have it
                     if self.data_store.contains_key(&key) {
                         let value = self.data_store.get(&key).unwrap().clone();
-                        result_query(self, key, Some(value));
+                        result_query(self, key, Some(value.0));
                     } else {
                         self.find_value_for_key(pending, key, result_query)
                     }
@@ -746,7 +748,7 @@ fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>) {
 
     // save value for future use
     if value.is_some() {
-        mgmt.data_store.insert(key.clone(), value.clone().unwrap());
+        mgmt.data_store.insert(key.clone(), (value.clone().unwrap(), Instant::now()));
     }
     mgmt.response_channel.send((key, value)).expect("Failed to deliver result!");
 }

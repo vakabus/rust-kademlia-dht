@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::time::{Duration, Instant};
-use multiaddr::{Multiaddr, ToMultiaddr};
-use rand::{OsRng, Rng};
+use multiaddr::Multiaddr;
 use id::UID;
 
 #[derive(PartialEq, Eq, Debug, Clone)]

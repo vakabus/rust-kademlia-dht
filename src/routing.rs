@@ -107,7 +107,7 @@ impl RoutingTable {
             my_peer_id
         );
         let mut buckets = Vec::with_capacity(my_peer_id.len() * 8 + 1);
-        for i in 0..my_peer_id.len() * 8 + 1 {
+        for _i in 0..my_peer_id.len() * 8 + 1 {
             buckets.push(KBucket::new(bucket_size));
         }
 
@@ -140,7 +140,6 @@ impl RoutingTable {
             return Ok(());
         }
 
-        let mid = self.my_peer_id.clone();
         let bn = self.get_bucket_number(&peer.peer_id);
         let timeout = &self.peer_timeout.clone();
         self.get_bucket_mut(bn).insert(peer, timeout)
@@ -149,7 +148,7 @@ impl RoutingTable {
     pub fn get_peer(&self, id: &UID) -> Option<&Peer> {
         self.get_bucket(self.get_bucket_number(id)).get(id)
     }
-
+    
     pub fn remove_peer(&mut self, id: &UID) -> Option<Peer> {
         let bn = self.get_bucket_number(id);
         self.get_bucket_mut(bn).remove(id)
@@ -211,34 +210,6 @@ impl RoutingTable {
             let peer = Peer::new(peer_id, addr);
             return self.insert_peer(peer);
         }
-    }
-
-    pub fn get_old_peers(&mut self) -> Vec<Peer> {
-        let mut old = Vec::new();
-        for bucket in self.buckets.iter() {
-            for peer in bucket.iter() {
-                if peer.is_older_than(&self.peer_timeout) {
-                    old.push(self.get_peer(&peer.peer_id).unwrap().clone());
-                }
-            }
-        }
-
-        old
-    }
-
-    fn list_not_full_buckets(&self) -> Vec<usize> {
-        let mut result = Vec::new();
-        for (i, bucket) in (&self.buckets).iter().enumerate() {
-            if !bucket.is_full() {
-                result.push(i);
-            }
-        }
-
-        result
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.list_not_full_buckets().len() > 0
     }
 
     pub fn len(&self) -> usize {

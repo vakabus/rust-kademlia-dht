@@ -43,7 +43,7 @@ pub enum Error {
 }
 
 impl From<::multiaddr::Error> for Error {
-    fn from(err: ::multiaddr::Error) -> Error {
+    fn from(_err: ::multiaddr::Error) -> Error {
         Error::ParsingFailed
     }
 }

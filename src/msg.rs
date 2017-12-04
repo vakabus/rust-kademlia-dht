@@ -23,7 +23,7 @@ impl Msg {
     }
     pub fn new_pong(mid: &UID, msg_id: UID, dst: &Multiaddr) -> Msg {
         Msg {
-            msg_id: UID::random(mid.len()),
+            msg_id: UID::random(msg_id.len()),
             addr: dst.clone(),
             peer_id: mid.clone(),
             msg_type: MsgType::ResPong,

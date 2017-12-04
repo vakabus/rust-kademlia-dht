@@ -37,8 +37,8 @@ mod id;
 
 use dht_control::*;
 use hash::DHTHasher;
-use gateway::{MsgGateway, SendAbilityChecker};
-use msg::{Msg, MsgType, MsgPeer};
+use gateway::MsgGateway;
+use msg::Msg;
 use std::thread;
 use std::thread::JoinHandle;
 use std::sync::mpsc;
@@ -50,7 +50,7 @@ use dht_control::DHTControlMsg;
 use id::UID;
 
 pub struct DHTService<T: DHTHasher> {
-    hasher: T,
+    _hasher: T,
     gateways: Vec<Box<MsgGateway + Send>>,
     control_thread: Option<ControlThread>,
     bucket_size: usize,
@@ -82,7 +82,7 @@ impl<T: DHTHasher> DHTService<T> {
             T::get_hash_bytes_count()
         );
         DHTService {
-            hasher: hasher,
+            _hasher: hasher,
             gateways: Vec::new(),
             control_thread: None,
             bucket_size,
@@ -110,7 +110,7 @@ impl<T: DHTHasher> DHTService<T> {
             .expect("When DHT is running, control thread should be available.")
             .sender
             .send(q);
-        if let Err(err) = res {
+        if let Err(_) = res {
             error!("Failed to send query to management thread.");
             return None;
         }
@@ -251,7 +251,7 @@ impl<T: DHTHasher> DHTService<T> {
         // stop management thread and save its data
         let ControlThread {
             sender,
-            receiver,
+            receiver: _,
             handle,
         } = self.control_thread.take().expect(
             "Control thread not running",

@@ -79,7 +79,8 @@ fn main() {
                 println!("  save [key] [value]        - save data in to the network");
                 println!("  query [key]               - query the network for some data");
                 println!("");
-                println!("Arguments can't contain spaces...", )
+                println!("Arguments can't contain spaces", );
+                println!("To exit press ^D");
 
             } else if line.starts_with("connect") {
                 let sp: Vec<&str> = line.split(" ").collect();

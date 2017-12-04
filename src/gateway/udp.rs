@@ -13,8 +13,8 @@ pub struct UdpGateway {
 
 impl UdpGateway {
     pub fn new(addr: &str) -> Box<UdpGateway> {
-        let mut socket = UdpSocket::bind(addr).expect("Failed to bind UDP socket.");
-        socket.set_read_timeout(Some(Duration::from_millis(20)));
+        let socket = UdpSocket::bind(addr).expect("Failed to bind UDP socket.");
+        let _ = socket.set_read_timeout(Some(Duration::from_millis(20)));
         let gw = UdpGateway { socket };
 
         Box::from(gw)
