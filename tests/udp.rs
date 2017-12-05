@@ -51,8 +51,8 @@ fn two_node_network() {
     node1.start();
     node2.start();
 
-    node1.save(&(b"key".to_vec()), (b"value".to_vec()));
-    node2.connect("/ip4/127.0.0.2/udp/12345".to_multiaddr().unwrap());
+    let _ = node1.save(&(b"key".to_vec()), (b"value".to_vec()));
+    let _ = node2.connect("/ip4/127.0.0.2/udp/12345".to_multiaddr().unwrap());
 
     // give it some time to connect
     thread::sleep(Duration::from_millis(500));
@@ -141,7 +141,7 @@ fn tiny_full_network() {
     // init logger
     init_logger();
 
-    let n = 64;
+    let n = 32;
 
     // init nodes
     let mut nodes: Vec<DHTService<BadTwoByteHasher>> = (1..n + 1)
@@ -151,7 +151,7 @@ fn tiny_full_network() {
     // start all nodes
     for (i, mut node) in nodes.iter_mut().enumerate() {
         node.start();
-        node.connect(
+        let _ = node.connect(
             format!("/ip4/127.0.1.{}/udp/12345", i)
                 .to_multiaddr()
                 .unwrap(),
@@ -163,7 +163,7 @@ fn tiny_full_network() {
     //thread::sleep(Duration::from_secs(60));
 
     // save some value
-    nodes[0].save(&(b"key".to_vec()), (b"value".to_vec()));
+    let _ = nodes[0].save(&(b"key".to_vec()), (b"value".to_vec()));
 
     // give it time to distribute
     thread::sleep(Duration::from_millis(1000));

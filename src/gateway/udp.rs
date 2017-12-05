@@ -97,7 +97,6 @@ fn extract_address(ma: Multiaddr) -> SocketAddr {
 mod tests {
 
     use std::thread;
-    use std::net::UdpSocket;
     use gateway::udp::UdpGateway;
     use multiaddr::ToMultiaddr;
     use gateway::serialize::binary::*;
