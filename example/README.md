@@ -30,3 +30,7 @@ Commands are accepted on stdin. Accepted commands are:
     * query value from DHT network
 * **status**
     * display size of routing table
+
+## Log
+
+If you run the example with environment variable `RUST_LOG` set to `info`, you can see what the client is doing. Setting it to debug will cause it to print all the packets it handles.

@@ -339,7 +339,7 @@ impl DHTManagement {
         peer_id: UID,
         f: fn(&mut DHTManagement, UID, Vec<Peer>) -> (),
     ) {
-        info!("Looking for k-closest nodes to {:?}", peer_id);
+        debug!("Looking for k-closest nodes to {:?}", peer_id);
 
         // get alpha nearest known nodes
         let peers = self.routing_table.get_k_nearest_peers(
@@ -382,7 +382,7 @@ impl DHTManagement {
         key: UID,
         f: fn(&mut DHTManagement, UID, Option<Vec<u8>>, usize),
     ) {
-        info!("Looking for value for key={:?}", key);
+        debug!("Looking for value for key={:?}", key);
         // get alpha nearest known nodes
         let peers = self.routing_table.get_k_nearest_peers(
             &key,
@@ -444,12 +444,15 @@ impl DHTManagement {
                 MsgType::ResListPeers { peers } => {
                     // append peers and convert them from msgpeer to peer
                     // also insert them to routing table
-                    data.peers.append(&mut peers
+                    let my_peer_id = self.peer_id.clone();
+                    let to_append = &mut peers
                         .into_iter()
                         .map(|x| x.to_peer())
                         .filter(|x| x.is_some())
+                        .map(|x| x.unwrap())
+                        .filter(|x| (&x).peer_id != my_peer_id)
+                        .filter(|x| data.peers.iter().filter(|y| (y.0).peer_id == (&x).peer_id).next().is_none())
                         .map(|x| {
-                            let x = x.unwrap();
                             self.routing_table_insert(
                                 pending,
                                 Some(x.peer_id.clone()),
@@ -457,7 +460,8 @@ impl DHTManagement {
                             );
                             (x, false)
                         })
-                        .collect());
+                        .collect();
+                    data.peers.append(to_append);
                     // sort (nearest peers end up first)
                     data.peers.sort_unstable_by(|a, b| {
                         a.0.peer_id.distance(&target).cmp(
@@ -679,9 +683,10 @@ impl DHTManagement {
     }
 
     fn refresh_buckets(&mut self, pending: &mut PendingOperations, force: bool) {
-        if self.last_bucket_refresh.elapsed() > self.config.peer_timeout || force {
+        if !self.running_discovery && self.last_bucket_refresh.elapsed() > self.config.peer_timeout || force {
+            info!("Refreshing buckets...");
+            self.running_discovery = true;
             for i in 0..(self.config.hash_size * 8 + 1) {
-                info!("{}", i);
                 {
                     let mr = self.routing_table.get_bucket_most_recent(i);
                     if mr.is_some() &&
@@ -720,6 +725,7 @@ impl DHTManagement {
 pub fn run(mut node: DHTManagement) -> DHTManagement {
     let mut pending = PendingOperations::new();
     let mut can_sleep: bool;
+    let mut routing_table_size: usize = 0;
 
     loop {
         can_sleep = true;
@@ -735,24 +741,12 @@ pub fn run(mut node: DHTManagement) -> DHTManagement {
         }
         can_sleep = can_sleep & !rcvd;
 
-        // handle not enough peers in routing table
-        let routing_table_size = node.routing_table.len();
-        if !node.running_discovery && routing_table_size > 0 &&
-            routing_table_size < node.config.bucket_size
-        {
-            info!(
-                "Running bucket refresh to discover other nodes... routing_table_size={} max_size={}",
-                routing_table_size,
-                (node.config.hash_size * 8 + 1) * node.config.bucket_size
-            );
-            node.running_discovery = true;
-
-            node.refresh_buckets(&mut pending, true);
-            can_sleep = false;
-        }
-
-        // Refresh buckets every peer timeout
+        // Refresh buckets every peer timeout and when routing table size changes
         node.refresh_buckets(&mut pending, false);
+        if routing_table_size != node.routing_table.len() {
+            node.refresh_buckets(&mut pending, true);
+            routing_table_size = node.routing_table.len();
+        }
 
         //Invalidate data every peer timeout (peer timeout is expected to be shorted than data timeout)
         node.invalidate_old_data(false);
