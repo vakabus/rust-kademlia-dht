@@ -22,7 +22,7 @@ use gateway::*;
 pub struct DHTManagement {
     peer_id: UID,
     config: DHTConfig,
-    data_store: HashMap<UID, (Vec<u8>,Instant)>,
+    data_store: HashMap<UID, (Vec<u8>, Instant)>,
     routing_table: RoutingTable,
     running_gateways: Vec<RunningGateway>,
     incoming_msg: Receiver<Msg>,
@@ -107,8 +107,8 @@ pub enum DHTControlMsg {
 }
 
 pub enum DHTResponseMsg {
-    QueryResponse{key: UID, value: Option<Vec<u8>>},
-    NumberOfKnownPeers{peers: usize},
+    QueryResponse { key: UID, value: Option<Vec<u8>> },
+    NumberOfKnownPeers { peers: usize },
 }
 
 impl DHTManagement {
@@ -142,7 +142,7 @@ impl DHTManagement {
             response_channel,
             running_discovery: false,
             last_bucket_refresh: Instant::now(),
-            last_data_invalidation: Instant::now()
+            last_data_invalidation: Instant::now(),
         }
     }
 
@@ -451,7 +451,13 @@ impl DHTManagement {
                         .filter(|x| x.is_some())
                         .map(|x| x.unwrap())
                         .filter(|x| (&x).peer_id != my_peer_id)
-                        .filter(|x| data.peers.iter().filter(|y| (y.0).peer_id == (&x).peer_id).next().is_none())
+                        .filter(|x| {
+                            data.peers
+                                .iter()
+                                .filter(|y| (y.0).peer_id == (&x).peer_id)
+                                .next()
+                                .is_none()
+                        })
                         .map(|x| {
                             self.routing_table_insert(
                                 pending,
@@ -654,7 +660,10 @@ impl DHTManagement {
                 DHTControlMsg::Stop => return (true, true),
                 DHTControlMsg::Save { key, value } => {
                     // save the data locally
-                    self.data_store.insert(key.clone(), (value.clone(), Instant::now()));
+                    self.data_store.insert(
+                        key.clone(),
+                        (value.clone(), Instant::now()),
+                    );
                     // distribute the data further into the network
                     info!("Trying to distribute data into the network...");
                     self.locale_k_closest_nodes(pending, key, result_store);
@@ -670,10 +679,14 @@ impl DHTManagement {
                 }
                 DHTControlMsg::Connect { addr } => {
                     self.routing_table_insert(pending, None, addr);
-                },
+                }
                 DHTControlMsg::GetNumberOfKnownPeers => {
                     let peers = self.routing_table.len();
-                    let _ = self.response_channel.send(DHTResponseMsg::NumberOfKnownPeers{peers});
+                    let _ = self.response_channel.send(
+                        DHTResponseMsg::NumberOfKnownPeers {
+                            peers,
+                        },
+                    );
                 }
             }
             (true, false)
@@ -683,7 +696,9 @@ impl DHTManagement {
     }
 
     fn refresh_buckets(&mut self, pending: &mut PendingOperations, force: bool) {
-        if !self.running_discovery && self.last_bucket_refresh.elapsed() > self.config.peer_timeout || force {
+        if !self.running_discovery &&
+            self.last_bucket_refresh.elapsed() > self.config.peer_timeout || force
+        {
             info!("Refreshing buckets...");
             self.running_discovery = true;
             for i in 0..(self.config.hash_size * 8 + 1) {
@@ -707,7 +722,7 @@ impl DHTManagement {
     fn invalidate_old_data(&mut self, force: bool) {
         if self.last_data_invalidation.elapsed() > self.config.peer_timeout || force {
             let mut to_remove = Vec::new();
-            for (k,v) in self.data_store.iter() {
+            for (k, v) in self.data_store.iter() {
                 if self.config.storage_timeout < (v.1).elapsed() {
                     to_remove.push(k.clone());
                 }
@@ -748,7 +763,8 @@ pub fn run(mut node: DHTManagement) -> DHTManagement {
             routing_table_size = node.routing_table.len();
         }
 
-        //Invalidate data every peer timeout (peer timeout is expected to be shorted than data timeout)
+        //Invalidate data every peer timeout (peer timeout is expected to be shorted than
+        // data timeout)
         node.invalidate_old_data(false);
 
         if can_sleep {
@@ -776,9 +792,16 @@ fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>, n_pe
     if value.is_some() && !mgmt.data_store.contains_key(&key) {
         // exponential backoff for storage time by number of peers asked
         let hops_aprox = (n_peers / mgmt.config.bucket_size) + 1;
-        let before = Duration::from_secs(mgmt.config.storage_timeout.as_secs() / (2 as u64).pow(hops_aprox as u32));
+        let before = Duration::from_secs(
+            mgmt.config.storage_timeout.as_secs() / (2 as u64).pow(hops_aprox as u32),
+        );
         let inst = Instant::now().sub(before);
-        mgmt.data_store.insert(key.clone(), (value.clone().unwrap(), inst));
+        mgmt.data_store.insert(
+            key.clone(),
+            (value.clone().unwrap(), inst),
+        );
     }
-    mgmt.response_channel.send(DHTResponseMsg::QueryResponse{key, value}).expect("Failed to deliver result!");
+    mgmt.response_channel
+        .send(DHTResponseMsg::QueryResponse { key, value })
+        .expect("Failed to deliver result!");
 }

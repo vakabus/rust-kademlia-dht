@@ -14,71 +14,71 @@
 //! `UdpGateway`, which handles simple communication directly over UDP with straightforward
 //! serialization format using `serde` crate. The only limitation in variaty of gateways is, that
 //! the address must be representable using [multiaddr](https://github.com/multiformats/multiaddr).
-//! 
+//!
 //! This library provides best-effort access to DHT network. This is due to the nature of supported
 //! network protocols - for example UDP. Queries can sometimes return nothing even though the value
 //! exists somewhere in the network. This should happen only in cases, when the network connection
 //! fails.
-//! 
+//!
 //! # Usage
-//! 
+//!
 //! To connect to DHT network, you need to instantiate a configured client, setup at least one
 //! gateway, start the service. After that, you will need to know an address of at least one
 //! other peer in network, so we can connect to it and seed our communication from him.
-//! 
+//!
 //! ```
 //! extern crate multiaddr;
 //! extern crate kademlia_dht;
-//! 
+//!
 //! use std::time::Duration;
-//!     
+//!
 //! use kademlia_dht::DHTService;
 //! use kademlia_dht::hash::sha1;
 //! use kademlia_dht::gateway::UdpGateway;
-//! 
+//!
 //! use multiaddr::ToMultiaddr;
-//! 
+//!
 //! fn main() {
 //!     let mut service = DHTService::new(
 //!         sha1::SHA1Hasher::new(),        // configure hashing algoritm used
-//!         20,                             // bucket size 
+//!         20,                             // bucket size
 //!                                         // (#hash bits * bucketnumber
 //!                                         //       = routing table max size)
 //!         3,                              // query concurrency value
-//!         Duration::from_secs(15 * 60),   // peer timeout (for how long 
+//!         Duration::from_secs(15 * 60),   // peer timeout (for how long
 //!                                         //               we consider node active)
 //!         Duration::from_secs(3),         // communication timeout
 //!         Duration::from_secs(60 * 60),   // storage (cache) timeout
 //!     );
-//!     
+//!
 //!     // at least one gateway is required
 //!     service.register_gateway(UdpGateway::new("127.0.0.13:12345"));
-//!     
+//!
 //!     // start service (spawns threads)
 //!     service.start();
-//!     
+//!
 //!     // connect to seed specified by Multiaddr (can be more than one)
 //!     service.connect("/ip4/127.0.0.17/udp/12345".to_multiaddr().unwrap());
-//!     
+//!
 //!     // now the client knows about the network and it takes some time to initialize
 //!     // at least the first connection
-//! 
+//!
 //!     // get number of known peers. When 0, the client is not connected to anywhere
 //!     let n_peers = service.get_number_of_known_peers();
-//!     
+//!
 //!     // after a while, you can query
 //!     let result = service.query(&vec![1u8, 8u8, 255u8]);
-//!     
+//!
 //!     // or save value to the network
 //!     let result = service.save(&vec![1u8, 8u8, 255u8], vec![1u8, 8u8, 255u8, 254u8]);
-//!     
+//!
 //!     // and when you are done, you should stop the node, better to do it manually,
 //!     // but when dropped, the DHTService will stop itself.
 //!     service.stop();
 //! }
 //! ```
-//! 
-//! You can have as many clients as you want in single application. 
+//!
+//! You can have as many clients as you want in single application.
 
 extern crate multiaddr;
 extern crate rand;
@@ -193,7 +193,7 @@ impl<T: DHTHasher> DHTService<T> {
             return None;
         }
         match res.unwrap() {
-            DHTResponseMsg::QueryResponse{key, value} => {
+            DHTResponseMsg::QueryResponse { key, value } => {
                 if key != hkey {
                     error!("Requested different key!");
                     return None;
@@ -211,7 +211,11 @@ impl<T: DHTHasher> DHTService<T> {
 
     /// Retrieve number of peers in the routing table. Returns 0 when errors occur.
     pub fn get_number_of_known_peers(&self) -> usize {
-        let res = self.control_thread.as_ref().expect("When DHT is running, control thread should be available.").sender.send(DHTControlMsg::GetNumberOfKnownPeers);
+        let res = self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .sender
+            .send(DHTControlMsg::GetNumberOfKnownPeers);
         if res.is_err() {
             error!("Couldn't send message to DHT client...");
             return 0;
@@ -228,7 +232,7 @@ impl<T: DHTHasher> DHTService<T> {
             return 0;
         }
 
-        if let DHTResponseMsg::NumberOfKnownPeers{peers} = res.unwrap() {
+        if let DHTResponseMsg::NumberOfKnownPeers { peers } = res.unwrap() {
             return peers;
         } else {
             error!("Received response to something else...");
@@ -290,7 +294,7 @@ impl<T: DHTHasher> DHTService<T> {
                                                            Receiver<DHTControlMsg>) =
             mpsc::channel();
         let (response_channel_send, response_channler_recv): (Sender<DHTResponseMsg>,
-                                                              Receiver<DHTResponseMsg>) = 
+                                                              Receiver<DHTResponseMsg>) =
             mpsc::channel();
         let (ch_send, gw_receive): (Sender<Msg>, Receiver<Msg>) = mpsc::channel();
 

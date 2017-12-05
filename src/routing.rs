@@ -148,7 +148,7 @@ impl RoutingTable {
     pub fn get_peer(&self, id: &UID) -> Option<&Peer> {
         self.get_bucket(self.get_bucket_number(id)).get(id)
     }
-    
+
     pub fn remove_peer(&mut self, id: &UID) -> Option<Peer> {
         let bn = self.get_bucket_number(id);
         self.get_bucket_mut(bn).remove(id)
