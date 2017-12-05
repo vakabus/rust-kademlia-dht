@@ -27,7 +27,7 @@ pub struct DHTManagement {
     running_gateways: Vec<RunningGateway>,
     incoming_msg: Receiver<Msg>,
     control_channel: Receiver<DHTControlMsg>,
-    response_channel: Sender<(UID, Option<Vec<u8>>)>,
+    response_channel: Sender<DHTResponseMsg>,
     running_discovery: bool,
     last_bucket_refresh: Instant,
     last_data_invalidation: Instant,
@@ -103,6 +103,12 @@ pub enum DHTControlMsg {
     Save { key: UID, value: Vec<u8> },
     Query { key: UID },
     Connect { addr: Multiaddr },
+    GetNumberOfKnownPeers,
+}
+
+pub enum DHTResponseMsg {
+    QueryResponse{key: UID, value: Option<Vec<u8>>},
+    NumberOfKnownPeers{peers: usize},
 }
 
 impl DHTManagement {
@@ -115,7 +121,7 @@ impl DHTManagement {
         data_timeout: Duration,
         incoming_msg: Receiver<Msg>,
         control_channel: Receiver<DHTControlMsg>,
-        response_channel: Sender<(UID, Option<Vec<u8>>)>,
+        response_channel: Sender<DHTResponseMsg>,
     ) -> DHTManagement {
         let my_peer_id = UID::random(hash_size);
         DHTManagement {
@@ -660,6 +666,10 @@ impl DHTManagement {
                 }
                 DHTControlMsg::Connect { addr } => {
                     self.routing_table_insert(pending, None, addr);
+                },
+                DHTControlMsg::GetNumberOfKnownPeers => {
+                    let peers = self.routing_table.len();
+                    let _ = self.response_channel.send(DHTResponseMsg::NumberOfKnownPeers{peers});
                 }
             }
             (true, false)
@@ -776,5 +786,5 @@ fn result_query(mgmt: &mut DHTManagement, key: UID, value: Option<Vec<u8>>, n_pe
         let inst = Instant::now().sub(before);
         mgmt.data_store.insert(key.clone(), (value.clone().unwrap(), inst));
     }
-    mgmt.response_channel.send((key, value)).expect("Failed to deliver result!");
+    mgmt.response_channel.send(DHTResponseMsg::QueryResponse{key, value}).expect("Failed to deliver result!");
 }

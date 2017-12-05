@@ -61,6 +61,9 @@ fn main() {
     
     // now the client knows about the network and it takes some time to initialize at least 
     // the first connection
+
+    // get number of known peers. When 0, the client is not connected to anywhere.
+    let n_peers = service.get_number_of_known_peers();
     
     // after a while, you can query
     let result = service.query(&vec![1u8, 8u8, 255u8]);
@@ -76,6 +79,10 @@ fn main() {
 
 You can have as many clients as you want in single application. 
 
-## Detailed documentation
+## More detailed documentation
 
-More information about this crate can be found in generated documentation by cargo or in source code;
+More information about this crate can be found in generated documentation by cargo or in source code.
+
+## Example
+
+You can find [working example](example/README.md) in directory `example`.

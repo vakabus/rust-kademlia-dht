@@ -42,9 +42,10 @@
 //!     let mut service = DHTService::new(
 //!         sha1::SHA1Hasher::new(),        // configure hashing algoritm used
 //!         20,                             // bucket size 
-//!                                         // (#hash bits * bucketnumber = routing table max size)
+//!                                         // (#hash bits * bucketnumber
+//!                                         //       = routing table max size)
 //!         3,                              // query concurrency value
-//!         Duration::from_secs(15 * 60),   // peer timeout (for how long after last connection 
+//!         Duration::from_secs(15 * 60),   // peer timeout (for how long 
 //!                                         //               we consider node active)
 //!         Duration::from_secs(3),         // communication timeout
 //!         Duration::from_secs(60 * 60),   // storage (cache) timeout
@@ -59,8 +60,11 @@
 //!     // connect to seed specified by Multiaddr (can be more than one)
 //!     service.connect("/ip4/127.0.0.17/udp/12345".to_multiaddr().unwrap());
 //!     
-//!     // now the client knows about the network and it takes some time to initialize at least 
-//!     // the first connection
+//!     // now the client knows about the network and it takes some time to initialize
+//!     // at least the first connection
+//! 
+//!     // get number of known peers. When 0, the client is not connected to anywhere
+//!     let n_peers = service.get_number_of_known_peers();
 //!     
 //!     // after a while, you can query
 //!     let result = service.query(&vec![1u8, 8u8, 255u8]);
@@ -68,8 +72,8 @@
 //!     // or save value to the network
 //!     let result = service.save(&vec![1u8, 8u8, 255u8], vec![1u8, 8u8, 255u8, 254u8]);
 //!     
-//!     // and when you are done, you should stop the node, better to do it manually, but when dropped,
-//!     // the DHTService will stop itself.
+//!     // and when you are done, you should stop the node, better to do it manually,
+//!     // but when dropped, the DHTService will stop itself.
 //!     service.stop();
 //! }
 //! ```
@@ -107,7 +111,6 @@ use std::sync::mpsc::{Sender, Receiver};
 use multiaddr::Multiaddr;
 use gateway::ControlMsg;
 use std::time::Duration;
-use dht_control::DHTControlMsg;
 use id::UID;
 
 pub struct DHTService<T: DHTHasher> {
@@ -123,7 +126,7 @@ pub struct DHTService<T: DHTHasher> {
 
 struct ControlThread {
     sender: Sender<DHTControlMsg>,
-    receiver: Receiver<(UID, Option<Vec<u8>>)>,
+    receiver: Receiver<DHTResponseMsg>,
     handle: JoinHandle<DHTManagement>,
 }
 
@@ -185,19 +188,51 @@ impl<T: DHTHasher> DHTService<T> {
             .expect("When DHT is running, control thread should be available.")
             .receiver
             .recv();
-        match res {
-            Ok((rkey, value)) => {
-                if rkey != hkey {
+        if res.is_err() {
+            error!("Failed to receive response to query.");
+            return None;
+        }
+        match res.unwrap() {
+            DHTResponseMsg::QueryResponse{key, value} => {
+                if key != hkey {
                     error!("Requested different key!");
                     return None;
                 } else {
                     return value;
                 }
             }
-            Err(_) => {
-                error!("Failed to receive response to query.");
+            _ => {
+                error!("Received response to something else...");
                 return None;
             }
+        }
+    }
+
+
+    /// Retrieve number of peers in the routing table. Returns 0 when errors occur.
+    pub fn get_number_of_known_peers(&self) -> usize {
+        let res = self.control_thread.as_ref().expect("When DHT is running, control thread should be available.").sender.send(DHTControlMsg::GetNumberOfKnownPeers);
+        if res.is_err() {
+            error!("Couldn't send message to DHT client...");
+            return 0;
+        }
+
+        let res = self.control_thread
+            .as_ref()
+            .expect("When DHT is running, control thread should be available.")
+            .receiver
+            .recv();
+
+        if res.is_err() {
+            error!("Couldn't receive message from DHT client...");
+            return 0;
+        }
+
+        if let DHTResponseMsg::NumberOfKnownPeers{peers} = res.unwrap() {
+            return peers;
+        } else {
+            error!("Received response to something else...");
+            return 0;
         }
     }
 
@@ -254,14 +289,9 @@ impl<T: DHTHasher> DHTService<T> {
         let (control_channel_send, control_channel_recv): (Sender<DHTControlMsg>,
                                                            Receiver<DHTControlMsg>) =
             mpsc::channel();
-        let (response_channel_send, response_channler_recv): (Sender<
-            (UID,
-             Option<Vec<u8>>),
-        >,
-                                                              Receiver<
-            (UID,
-             Option<Vec<u8>>),
-        >) = mpsc::channel();
+        let (response_channel_send, response_channler_recv): (Sender<DHTResponseMsg>,
+                                                              Receiver<DHTResponseMsg>) = 
+            mpsc::channel();
         let (ch_send, gw_receive): (Sender<Msg>, Receiver<Msg>) = mpsc::channel();
 
         // create DHTManagement object

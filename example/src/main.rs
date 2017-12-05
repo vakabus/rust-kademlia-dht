@@ -79,6 +79,7 @@ fn main() {
                 println!("  connect [multiaddr str]   - try to connect to other peer");
                 println!("  save [key] [value]        - save data in to the network");
                 println!("  query [key]               - query the network for some data");
+                println!("  status                    - get routing table size");
                 println!("");
                 println!("Arguments can't contain spaces", );
                 println!("To exit press ^D");
@@ -121,6 +122,8 @@ fn main() {
                     let res = service.query(&sp[1].to_owned().into_bytes());
                     println!("Result: {}", res.map(|v| String::from_utf8(v).unwrap_or("<can't decode>".to_owned())).unwrap_or("<no data>".to_owned()));
                 }
+            } else if line.starts_with("status") {
+                println!("routing table size: {}", service.get_number_of_known_peers());
             } else {
                 println!("Unknown command. Try `help`...");
             }
