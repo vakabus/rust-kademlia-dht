@@ -21,7 +21,8 @@ impl UdpGateway {
     }
 
     fn _recv(&self) -> Option<BinMsg> {
-        //TODO fix the huge buffer
+        // the huge buffer can't be removed, because if the datagram does not fit,
+        // the rest of it would be discarded
         let mut buff = [0u8; 65536];
         match self.socket.recv_from(&mut buff) {
             Ok((len, addr)) => {
