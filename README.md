@@ -1,3 +1,7 @@
+**DISCLAIMER:** This project serves mainly educational purpose. It's definitely not ready for any kind of real deployment, it might have security issues. Also, this is my first project in Rust. So don't taky it seriously. Any feedback is welcome!
+
+---
+
 # Kademlia DHT in Rust
 
 This is crate is supposed to make running DHT's easy.
